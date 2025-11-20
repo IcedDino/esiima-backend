@@ -2,6 +2,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, date
 
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
 class Carrera(BaseModel):
     id: int
     nombre: str
