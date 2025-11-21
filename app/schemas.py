@@ -16,3 +16,25 @@ class Carrera(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PlanEstudio(BaseModel):
+    id: int
+    nombre: str
+    carrera: Carrera
+
+    class Config:
+        from_attributes = True
+
+class Alumno(BaseModel):
+    id: int
+    matricula: str
+    nombre: str
+    apellido_paterno: str
+    apellido_materno: Optional[str] = None
+    email: str
+    cuatrimestre_actual: Optional[int] = None
+    promedio_general: Optional[float] = None
+    plan_estudio: Optional[PlanEstudio] = None
+
+    class Config:
+        from_attributes = True
