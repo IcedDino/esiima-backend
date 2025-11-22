@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict
 
+from starlette.responses import JSONResponse
+
 from .database import SessionLocal, engine, Base
 from .models import Carrera as DBCarrera, Usuario as DBUsuario, Alumno as DBAlumno, PlanEstudio as DBPlanEstudio
 from .schemas import Carrera as SchemaCarrera, UserLogin, Alumno as SchemaAlumno
@@ -28,27 +30,41 @@ def get_db():
     finally:
         db.close()
 
+
 @app.post("/login")
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(DBUsuario).options(joinedload(DBUsuario.rol)).filter(DBUsuario.email == user_credentials.email).first()
+    user = db.query(DBUsuario).options(joinedload(DBUsuario.rol)).filter(
+        DBUsuario.email == user_credentials.email).first()
     if not user or not verify_password(user_credentials.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user_id = user.docente_id if user.docente_id is not None else user.alumno_id
     if user_id is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is not fully configured. No associated student or teacher ID found.",
+            status_code=403,
+            detail="User account is not fully configured."
         )
 
     access_token = create_access_token(
         data={"sub": user.email, "user_id": user_id, "role": user.rol.nombre}
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+
+    # --- NEW: Set cookie so frontend stays logged in ---
+    response = JSONResponse({"access_token": access_token, "token_type": "bearer"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="None",
+        path="/"
+    )
+
+    return response
+
 
 @app.get("/alumnos/me", response_model=SchemaAlumno)
 def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
