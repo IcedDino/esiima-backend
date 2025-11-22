@@ -79,7 +79,7 @@ def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session 
     # The 'get_current_user' imported from auth.py will now read the
     # 'Authorization: Bearer ...' header sent by your main.js
 
-    if current_user["role"] != "Alumno":
+    if current_user["role"].lower() != "alumno":
         raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
     alumno = db.query(DBAlumno).options(
