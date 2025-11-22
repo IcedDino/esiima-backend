@@ -7,7 +7,8 @@ from typing import List, Dict
 from .database import SessionLocal, engine, Base
 from .models import Carrera as DBCarrera, Usuario as DBUsuario, Alumno as DBAlumno, PlanEstudio as DBPlanEstudio
 from .schemas import Carrera as SchemaCarrera, UserLogin, Alumno as SchemaAlumno
-from .auth import verify_password, create_access_token
+# IMPORT get_current_user FROM auth.py
+from .auth import verify_password, create_access_token, get_current_user
 from jose import JWTError, jwt
 import os
 
@@ -19,9 +20,6 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# ----------------------------------------------------------
-# FIXED CORS (must not be wildcard when using credentials)
-# ----------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -40,7 +38,7 @@ def get_db():
         db.close()
 
 # ----------------------------------------------------------
-# LOGIN — now sets a secure cookie
+# LOGIN - MODIFIED to return Token in Body
 # ----------------------------------------------------------
 @app.post("/login")
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
@@ -63,40 +61,18 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         "role": user.rol.nombre
     })
 
-    response = JSONResponse({"message": "login ok"})
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="None",
-        path="/",
-    )
-    return response
+    # CHANGE: Return the token directly in the JSON
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "message": "login ok"
+    }
 
 # ----------------------------------------------------------
-# AUTH HANDLER — now reads cookie instead of Authorization header
+# REMOVED custom get_current_user
+# We now use the one imported from .auth which checks headers
 # ----------------------------------------------------------
-def get_current_user(request: Request):
-    token = request.cookies.get("access_token")
 
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return {
-            "email": payload.get("sub"),
-            "user_id": payload.get("user_id"),
-            "role": payload.get("role")
-        }
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-# ----------------------------------------------------------
-# STUDENT ENDPOINT — now properly authenticated
-# ----------------------------------------------------------
 @app.get("/alumnos/me", response_model=SchemaAlumno)
 def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if current_user["role"] != "Alumno":
@@ -111,11 +87,9 @@ def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session 
 
     return alumno
 
-
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the ESIIMA API"}
-
 
 @app.get("/carreras/", response_model=List[SchemaCarrera])
 def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
