@@ -39,6 +39,12 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         )
     
     user_id = user.docente_id if user.docente_id is not None else user.alumno_id
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account is not fully configured. No associated student or teacher ID found.",
+        )
+
     access_token = create_access_token(
         data={"sub": user.email, "user_id": user_id, "role": user.rol.nombre}
     )
