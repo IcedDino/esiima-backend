@@ -7,7 +7,8 @@ from typing import List, Dict
 from .database import SessionLocal, engine, Base
 from .models import Carrera as DBCarrera, Usuario as DBUsuario, Alumno as DBAlumno, PlanEstudio as DBPlanEstudio
 from .schemas import Carrera as SchemaCarrera, UserLogin, Alumno as SchemaAlumno
-# IMPORT get_current_user FROM auth.py
+
+# 1. UPDATE THIS IMPORT: Add 'get_current_user'
 from .auth import verify_password, create_access_token, get_current_user
 from jose import JWTError, jwt
 import os
@@ -30,6 +31,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 def get_db():
     db = SessionLocal()
     try:
@@ -37,9 +39,7 @@ def get_db():
     finally:
         db.close()
 
-# ----------------------------------------------------------
-# LOGIN - MODIFIED to return Token in Body
-# ----------------------------------------------------------
+
 @app.post("/login")
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     user = db.query(DBUsuario).options(joinedload(DBUsuario.rol)).filter(
@@ -61,20 +61,24 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         "role": user.rol.nombre
     })
 
-    # CHANGE: Return the token directly in the JSON
+    # Return token in JSON body (Compatible with your current main.js)
     return {
         "access_token": token,
         "token_type": "bearer",
         "message": "login ok"
     }
 
-# ----------------------------------------------------------
-# REMOVED custom get_current_user
-# We now use the one imported from .auth which checks headers
-# ----------------------------------------------------------
+
+# ------------------------------------------------------------------
+# DELETE THE "def get_current_user(request: Request)" FUNCTION HERE
+# The import from .auth will handle it automatically now.
+# ------------------------------------------------------------------
 
 @app.get("/alumnos/me", response_model=SchemaAlumno)
 def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    # The 'get_current_user' imported from auth.py will now read the
+    # 'Authorization: Bearer ...' header sent by your main.js
+
     if current_user["role"] != "Alumno":
         raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
@@ -87,9 +91,11 @@ def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session 
 
     return alumno
 
+
 @app.get("/")
 def read_root():
     return {"message": "Welcome to the ESIIMA API"}
+
 
 @app.get("/carreras/", response_model=List[SchemaCarrera])
 def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
