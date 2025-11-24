@@ -38,3 +38,27 @@ class Alumno(BaseModel):
 
     class Config:
         from_attributes = True
+
+class Extracurricular(BaseModel):
+    id: int
+    nombre: str
+    descripcion: Optional[str] = None
+    tipo: Optional[str] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+    activo: bool
+
+    class Config:
+        from_attributes = True
+
+class AlumnoExtracurricular(BaseModel):
+    id: int
+    fecha_inscripcion: datetime
+    calificacion: Optional[float] = None
+    horas_cumplidas: int
+    completado: bool
+    fecha_completado: Optional[datetime] = None
+    extracurricular: Extracurricular
+
+    class Config:
+        from_attributes = True

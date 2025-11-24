@@ -5,8 +5,8 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict
 
 from .database import SessionLocal, engine, Base
-from .models import Carrera as DBCarrera, Usuario as DBUsuario, Alumno as DBAlumno, PlanEstudio as DBPlanEstudio
-from .schemas import Carrera as SchemaCarrera, UserLogin, Alumno as SchemaAlumno
+from .models import Carrera as DBCarrera, Usuario as DBUsuario, Alumno as DBAlumno, PlanEstudio as DBPlanEstudio, AlumnoExtracurricular as DBAlumnoExtracurricular
+from .schemas import Carrera as SchemaCarrera, UserLogin, Alumno as SchemaAlumno, AlumnoExtracurricular as SchemaAlumnoExtracurricular
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
 from .auth import verify_password, create_access_token, get_current_user
@@ -90,6 +90,21 @@ def read_alumnos_me(current_user: Dict = Depends(get_current_user), db: Session 
         raise HTTPException(status_code=404, detail="Student not found")
 
     return alumno
+
+
+@app.get("/extracurriculares/me", response_model=List[SchemaAlumnoExtracurricular])
+def read_alumno_extracurriculares_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    extracurriculares = db.query(DBAlumnoExtracurricular).options(
+        joinedload(DBAlumnoExtracurricular.extracurricular)
+    ).filter(DBAlumnoExtracurricular.alumno_id == current_user["user_id"]).all()
+
+    if not extracurriculares:
+        return []
+
+    return extracurriculares
 
 
 @app.get("/")
