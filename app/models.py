@@ -238,6 +238,8 @@ class Usuario(Base):
     activo = Column(Boolean, default=True)
     ultimo_acceso = Column(DateTime(timezone=True))
     debe_cambiar_password = Column(Boolean, default=True)
+    verification_key_hash = Column(String(255), nullable=True)
+    debe_cambiar_clave_verificacion = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     rol = relationship("CatRoles")

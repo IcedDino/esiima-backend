@@ -5,11 +5,31 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict
 
 from .database import SessionLocal, engine, Base
-from .models import Carrera as DBCarrera, Usuario as DBUsuario, Alumno as DBAlumno, PlanEstudio as DBPlanEstudio, AlumnoExtracurricular as DBAlumnoExtracurricular
-from .schemas import Carrera as SchemaCarrera, UserLogin, Alumno as SchemaAlumno, AlumnoExtracurricular as SchemaAlumnoExtracurricular
+from .models import (
+    Carrera as DBCarrera, 
+    Usuario as DBUsuario, 
+    Alumno as DBAlumno, 
+    PlanEstudio as DBPlanEstudio, 
+    AlumnoExtracurricular as DBAlumnoExtracurricular,
+    Inscripcion as DBInscripcion,
+    Kardex as DBKardex,
+    CalificacionParcial as DBCalificacionParcial,
+    DocenteMateria as DBDocenteMateria,
+    Materia as DBMateria,
+    Grupo as DBGrupo
+)
+from .schemas import (
+    Carrera as SchemaCarrera, 
+    UserLogin, 
+    Alumno as SchemaAlumno, 
+    AlumnoExtracurricular as SchemaAlumnoExtracurricular,
+    Calificacion as SchemaCalificacion,
+    VerificationKeyUpdate,
+    PasswordUpdate
+)
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
-from .auth import verify_password, create_access_token, get_current_user
+from .auth import verify_password, create_access_token, get_current_user, get_password_hash
 from jose import JWTError, jwt
 import os
 
@@ -105,6 +125,87 @@ def read_alumno_extracurriculares_me(current_user: Dict = Depends(get_current_us
         return []
 
     return extracurriculares
+
+@app.get("/calificaciones/me", response_model=List[SchemaCalificacion])
+def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+
+    # Query to get all inscriptions and related grade information for the student
+    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales),
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.grupo)
+    ).all()
+
+    if not inscripciones:
+        return []
+
+    calificaciones_list = []
+    for inscripcion in inscripciones:
+        kardex = inscripcion.kardex
+        if not kardex:
+            continue # Skip if there's no kardex entry for the inscription
+
+        # Prepare partial scores
+        parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales}
+
+        # Construct the response object
+        calificacion_data = {
+            "materia": inscripcion.docente_materia.materia,
+            "grupo": inscripcion.docente_materia.grupo,
+            "parcial1": parciales.get(1),
+            "parcial2": parciales.get(2),
+            "parcial3": parciales.get(3),
+            "promedio": kardex.calificacion_final
+        }
+        calificaciones_list.append(calificacion_data)
+
+    return calificaciones_list
+
+@app.put("/users/me/verification-key")
+def update_verification_key(
+    key_update: VerificationKeyUpdate,
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Verify the current verification key
+    if not verify_password(key_update.current_verification_key, user.verification_key_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid current verification key")
+
+    # Hash the new verification key and update the user
+    user.verification_key_hash = get_password_hash(key_update.new_verification_key)
+    user.debe_cambiar_clave_verificacion = False
+    db.commit()
+
+    return {"message": "Verification key updated successfully"}
+
+@app.put("/users/me/password")
+def update_password(
+    password_update: PasswordUpdate,
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Verify the current password
+    if not verify_password(password_update.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid current password")
+
+    # Hash the new password and update the user
+    user.password_hash = get_password_hash(password_update.new_password)
+    user.debe_cambiar_password = False
+    db.commit()
+
+    return {"message": "Password updated successfully"}
 
 
 @app.get("/")

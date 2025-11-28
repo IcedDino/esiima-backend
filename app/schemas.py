@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, date
 
@@ -62,3 +62,35 @@ class AlumnoExtracurricular(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MateriaSchema(BaseModel):
+    nombre: str
+
+    class Config:
+        from_attributes = True
+
+class GrupoSchema(BaseModel):
+    nombre: str
+
+    class Config:
+        from_attributes = True
+
+class Calificacion(BaseModel):
+    materia: MateriaSchema = Field(..., alias="nombre_materia")
+    grupo: GrupoSchema = Field(..., alias="nombre_grupo")
+    parcial1: Optional[float] = None
+    parcial2: Optional[float] = None
+    parcial3: Optional[float] = None
+    promedio: Optional[float] = Field(None, alias="calificacion_final")
+
+    class Config:
+        from_attributes = True
+        allow_population_by_field_name = True
+
+class VerificationKeyUpdate(BaseModel):
+    current_verification_key: str
+    new_verification_key: str
+
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
