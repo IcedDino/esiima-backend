@@ -25,6 +25,7 @@ from sqlalchemy import text
 # Adjust imports to match your project structure:
 from app.database import engine, Base
 from app.models import *  # noqa: F401,F403
+from app.auth import get_password_hash
 
 # ---------------------------
 # CONFIG (medium dataset)
@@ -101,29 +102,19 @@ def get_or_create(session, model, defaults=None, **kwargs):
 def exists_unique_constraint(session, model, **kwargs):
     return session.query(model).filter_by(**kwargs).first() is not None
 
-def disable_fk_checks(session):
-    session.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
-    session.commit()
-
-def enable_fk_checks(session):
-    session.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
-    session.commit()
-
 # ---------------------------
 # CLEAR DB
 # ---------------------------
 
 def clear_database(session: Session):
-    print("⚠️  Clearing all tables (disabling FK checks)...")
-    disable_fk_checks(session)
-    # delete from every table
-    for table in reversed(Base.metadata.sorted_tables):
-        name = table.name
-        print(f" - deleting from {name} ...")
-        session.execute(table.delete())
-    session.commit()
-    enable_fk_checks(session)
-    print("✔ Database cleared.\n")
+    """
+    Drops all tables defined in the Base metadata.
+    """
+    print("⚠️  Dropping all tables...")
+    # drop_all issues DROP TABLE statements for all tables
+    # It respects foreign key constraints for ordering.
+    Base.metadata.drop_all(session.bind)
+    print("✔ All tables dropped.\n")
 
 
 # ---------------------------
@@ -432,6 +423,9 @@ def seed_alumnos_usuarios(session: Session):
     users_created = 0
     alumnos_created = []
 
+    default_password_hash = get_password_hash("password123")
+    default_verification_key_hash = get_password_hash("123456")
+
     for _ in range(CONFIG["ALUMNOS"]):
         email = unique_email_generator(used_emails)
         matricula = unique_matricula_generator(used_matriculas)
@@ -466,11 +460,13 @@ def seed_alumnos_usuarios(session: Session):
         user_email = unique_email_generator(used_emails)
         usuario = Usuario(
             email=user_email,
-            password_hash="notarealhash",
+            password_hash=default_password_hash,
             rol_id=role_alumno.id if role_alumno else None,
             alumno_id=alumno.id,
             activo=True,
-            debe_cambiar_password=False
+            debe_cambiar_password=True,
+            verification_key_hash=default_verification_key_hash,
+            debe_cambiar_clave_verificacion=True
         )
         session.add(usuario)
         try:
@@ -492,6 +488,10 @@ def seed_usuarios_docentes(session: Session):
     docentes = session.query(Docente).all()
     created = 0
     used_emails = set([u.email for u in session.query(Usuario).all()])
+    
+    default_password_hash = get_password_hash("password123")
+    default_verification_key_hash = get_password_hash("123456")
+
     for d in docentes:
         # if docente already has usuario (via relationship), skip
         existing = session.query(Usuario).filter_by(docente_id=d.id).first()
@@ -500,10 +500,13 @@ def seed_usuarios_docentes(session: Session):
         email = d.email if d.email and d.email not in used_emails else unique_email_generator(used_emails)
         user = Usuario(
             email=email,
-            password_hash="notarealhash",
+            password_hash=default_password_hash,
             rol_id=role_docente.id if role_docente else None,
             docente_id=d.id,
-            activo=True
+            activo=True,
+            debe_cambiar_password=True,
+            verification_key_hash=default_verification_key_hash,
+            debe_cambiar_clave_verificacion=True
         )
         session.add(user)
         try:
@@ -997,31 +1000,33 @@ def run_full_seed():
     session = Session(bind=engine)
 
     print("\n=== START SEED ===\n")
-    seed_catalogs(session)
-    seed_carreras_planes_materias(session)
-    seed_periodos_grupos(session)
-    seed_docentes(session)
-    seed_docente_materia_horarios(session)
-    alumnos = seed_alumnos_usuarios(session)
-    seed_usuarios_docentes(session)
-    seed_inscripciones_and_grades(session)
-    seed_pagos(session)
-    seed_documentos(session)
-    seed_extracurriculars(session)
-    seed_servicio_practicas(session)
-    seed_titulacion(session)
-    seed_alumni_events(session)
-    seed_notifications_audit_calendar(session)
+    try:
+        seed_catalogs(session)
+        seed_carreras_planes_materias(session)
+        seed_periodos_grupos(session)
+        seed_docentes(session)
+        seed_docente_materia_horarios(session)
+        seed_alumnos_usuarios(session)
+        seed_usuarios_docentes(session)
+        seed_inscripciones_and_grades(session)
+        seed_pagos(session)
+        seed_documentos(session)
+        seed_extracurriculars(session)
+        seed_servicio_practicas(session)
+        seed_titulacion(session)
+        seed_alumni_events(session)
+        seed_notifications_audit_calendar(session)
+        print("=== SEED FINISHED ===")
+    finally:
+        session.close()
 
-    print("=== SEED FINISHED ===")
-    session.close()
 
 # ---------------------------
 # MENU
 # ---------------------------
 
 def main_menu():
-    session = Session(bind=engine)
+    
     try:
         while True:
             print("\n======= SEEDER MENU =======")
@@ -1031,20 +1036,32 @@ def main_menu():
             print("4. Exit")
             print("===========================\n")
             choice = input("Select an option: ").strip()
+
             if choice == "1":
                 run_full_seed()
             elif choice == "2":
-                clear_database(session)
+                session = Session(bind=engine)
+                try:
+                    clear_database(session)
+                finally:
+                    session.close()
             elif choice == "3":
-                clear_database(session)
+                session = Session(bind=engine)
+                try:
+                    clear_database(session)
+                finally:
+                    session.close()
                 run_full_seed()
             elif choice == "4":
                 print("Exiting.")
                 break
             else:
                 print("Invalid option.")
-    finally:
-        session.close()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        import traceback
+        traceback.print_exc()
+
 
 if __name__ == "__main__":
     main_menu()
