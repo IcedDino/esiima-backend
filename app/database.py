@@ -12,7 +12,17 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME")
-DB_SSL_CERT_PATH = os.getenv("DB_SSL_CERT_PATH") # New variable for the SSL cert path
+DB_SSL_CERT_PATH = os.getenv("DB_SSL_CERT_PATH")
+
+# If the DB_SSL_CERT_PATH is not provided via environment variable,
+# we construct a default path for local development.
+if not DB_SSL_CERT_PATH:
+    # This assumes the script is in a subdirectory of the project root.
+    # The certificate is expected to be in the project root.
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cert_path = os.path.join(project_root, "DigiCertGlobalRootG2.crt.pem")
+    if os.path.exists(cert_path):
+        DB_SSL_CERT_PATH = cert_path
 
 DATABASE_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
 
