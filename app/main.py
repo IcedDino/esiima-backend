@@ -152,10 +152,10 @@ def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current_user)
         # Prepare partial scores
         parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales}
 
-        # Construct the response object
+        # Construct the response object in the exact shape Pydantic expects
         calificacion_data = {
-            "materia": inscripcion.docente_materia.materia,
-            "grupo": inscripcion.docente_materia.grupo,
+            "materia": {"nombre": inscripcion.docente_materia.materia.nombre},
+            "grupo": {"nombre": inscripcion.docente_materia.grupo.nombre},
             "parcial1": parciales.get(1),
             "parcial2": parciales.get(2),
             "parcial3": parciales.get(3),
