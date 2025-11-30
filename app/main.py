@@ -127,43 +127,46 @@ def read_alumno_extracurriculares_me(current_user: Dict = Depends(get_current_us
     return extracurriculares
 
 @app.get("/calificaciones/me", response_model=List[SchemaCalificacion])
-def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if current_user["role"].lower() != "alumno":
-        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+async def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        if current_user["role"].lower() != "alumno":
+            raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
-    alumno_id = current_user["user_id"]
+        alumno_id = current_user["user_id"]
 
-    # Query to get all inscriptions and related grade information for the student
-    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
-        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales),
-        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
-        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.grupo)
-    ).all()
+        inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+            joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales),
+            joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+            joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.grupo)
+        ).all()
 
-    if not inscripciones:
-        return []
+        if not inscripciones:
+            return []
 
-    calificaciones_list = []
-    for inscripcion in inscripciones:
-        kardex = inscripcion.kardex
-        if not kardex:
-            continue # Skip if there's no kardex entry for the inscription
+        calificaciones_list = []
+        for inscripcion in inscripciones:
+            kardex = inscripcion.kardex
+            if not kardex:
+                continue
 
-        # Prepare partial scores
-        parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales}
+            parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales}
 
-        # Construct the response object in the exact shape Pydantic expects
-        calificacion_data = {
-            "materia": {"nombre": inscripcion.docente_materia.materia.nombre},
-            "grupo": {"nombre": inscripcion.docente_materia.grupo.nombre},
-            "parcial1": parciales.get(1),
-            "parcial2": parciales.get(2),
-            "parcial3": parciales.get(3),
-            "promedio": kardex.calificacion_final
-        }
-        calificaciones_list.append(calificacion_data)
+            calificacion_data = {
+                "materia": {"nombre": inscripcion.docente_materia.materia.nombre},
+                "grupo": {"nombre": inscripcion.docente_materia.grupo.nombre},
+                "parcial1": parciales.get(1),
+                "parcial2": parciales.get(2),
+                "parcial3": parciales.get(3),
+                "promedio": kardex.calificacion_final
+            }
+            calificaciones_list.append(calificacion_data)
 
-    return calificaciones_list
+        return calificaciones_list
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 @app.put("/users/me/verification-key")
 def update_verification_key(
