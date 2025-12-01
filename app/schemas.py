@@ -162,14 +162,14 @@ class Inscripcion(BaseModel):
         from_attributes = True
 
 class ServicioSocial(BaseModel):
-    institucion: str
-    dependencia: str
-    programa: str
-    horas_requeridas: int
-    horas_cumplidas: int
-    fecha_inicio: date
-    fecha_fin: date
-    estatus_id: int
+    institucion: Optional[str] = None
+    dependencia: Optional[str] = None
+    programa: Optional[str] = None
+    horas_requeridas: Optional[int] = None
+    horas_cumplidas: Optional[int] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin: Optional[date] = None
+    estatus_id: Optional[int] = None
     documento_url: Optional[str] = None
     carta_aceptacion_url: Optional[str] = None
 
