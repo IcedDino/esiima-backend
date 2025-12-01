@@ -329,17 +329,29 @@ def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = De
 
 @app.put("/users/me", response_model=SchemaUser)
 def update_user_me(user_update: SchemaUserUpdate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
+    user_email = current_user.get("sub")
+    if not user_email:
+        raise HTTPException(status_code=403, detail="Invalid token: User identifier not found.")
+
+    user = db.query(DBUsuario).filter(DBUsuario.email == user_email).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    update_data = user_update.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(user, key, value)
-
+    if user.alumno:
+        update_data = user_update.dict(exclude_unset=True)
+        for key, value in update_data.items():
+            if hasattr(user.alumno, key):
+                setattr(user.alumno, key, value)
+        if 'email' in update_data:
+            user.email = update_data['email']
+    
     db.commit()
     db.refresh(user)
-    return user
+    if user.alumno:
+        db.refresh(user.alumno)
+
+    # Re-fetch the updated user to return the correct data
+    return get_user_me(current_user, db)
 
 @app.get("/profesores/me", response_model=List[SchemaProfesor])
 def get_profesores_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):

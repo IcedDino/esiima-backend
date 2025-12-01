@@ -41,11 +41,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        user_id: int = payload.get("user_id")
-        role: str = payload.get("role")
-        if email is None or user_id is None or role is None:
-            raise credentials_exception
-        return {"email": email, "user_id": user_id, "role": role}
+        # Return the entire payload so the endpoint can handle it
+        return payload
     except JWTError:
         raise credentials_exception
