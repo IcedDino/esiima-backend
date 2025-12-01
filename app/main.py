@@ -8,6 +8,8 @@ from sqlalchemy import func
 import traceback
 import logging
 
+##This is a random comment to force redeploy
+
 from .database import SessionLocal, engine, Base
 from .models import (
     Carrera as DBCarrera, 
