@@ -8,9 +8,10 @@ class UserLogin(BaseModel):
 
 class StudentRegister(BaseModel):
     nombre: str
-    apellidoPaterno: str = Field(..., alias="apellido_paterno")
-    apellidoMaterno: Optional[str] = Field(None, alias="apellido_materno")
-    fechaNacimiento: date = Field(..., alias="fecha_nacimiento")
+    apellidoPaterno: str
+    apellidoMaterno: Optional[str] = None
+    # Expected date format for fechaNacimiento is YYYY-MM-DD
+    fechaNacimiento: date
     curp: str
     email: str
     password: str

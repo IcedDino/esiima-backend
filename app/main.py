@@ -152,6 +152,8 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
 
 @app.post("/enroll/register", status_code=status.HTTP_201_CREATED)
 def register_student(student_data: StudentRegister, db: Session = Depends(get_db)):
+    logging.info(f"Received student registration data: {student_data.dict()}") # Log incoming data
+
     # Check if email or CURP already exists
     if db.query(DBUsuario).filter(DBUsuario.email == student_data.email).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
