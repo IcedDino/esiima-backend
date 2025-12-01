@@ -19,7 +19,9 @@ from .models import (
     Grupo as DBGrupo,
     Docente as DBProfesor,
     Evaluacion as DBEvaluacion,
-    Documento as DBDocumento
+    Documento as DBDocumento,
+    ServicioSocial as DBServicioSocial,
+    PracticasProfesionales as DBPracticasProfesionales
 )
 from .schemas import (
     Carrera as SchemaCarrera, 
@@ -34,7 +36,9 @@ from .schemas import (
     Profesor as SchemaProfesor,
     EvaluacionCreate as SchemaEvaluacionCreate,
     Documento as SchemaDocumento,
-    Inscripcion as SchemaInscripcion
+    Inscripcion as SchemaInscripcion,
+    ServicioSocial as SchemaServicioSocial,
+    PracticasProfesionales as SchemaPracticasProfesionales
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -53,7 +57,11 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://esiimav3-frontend-cchnfzcbbzgegucu.mexicocentral-01.azurewebsites.net"
+        "https://esiimav3-frontend-cchnfzcbbzgegucu.mexicocentral-01.azurewebsites.net",
+        "http://localhost",
+        "http://localhost:8080",
+        "http://localhost:3000",
+        "http://127.0.0.1:5500"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -314,3 +322,21 @@ def get_inscripciones_me(current_user: Dict = Depends(get_current_user), db: Ses
             "promedio_final": kardex.calificacion_final if kardex else None
         })
     return results
+
+@app.get("/serviciosocial/me", response_model=List[SchemaServicioSocial])
+def get_servicio_social_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    servicio_social = db.query(DBServicioSocial).filter(DBServicioSocial.alumno_id == alumno_id).all()
+    return servicio_social
+
+@app.get("/practicas/me", response_model=List[SchemaPracticasProfesionales])
+def get_practicas_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    practicas = db.query(DBPracticasProfesionales).filter(DBPracticasProfesionales.alumno_id == alumno_id).all()
+    return practicas
