@@ -209,10 +209,10 @@ async def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current
 
         return calificaciones_list
     except Exception as e:
-        logging.error(traceback.format_exc())
+        logging.error(f"Error in /calificaciones/me: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"Internal server error: {str(e)}"
+            detail=f"An unexpected error occurred: {str(e)}. Check server logs for more details."
         )
 
 @app.put("/users/me/verification-key")
