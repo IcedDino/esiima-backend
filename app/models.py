@@ -697,7 +697,9 @@ class Evaluacion(Base):
     id = Column(Integer, primary_key=True)
     profesor_id = Column(Integer, ForeignKey('docentes.id'), nullable=False)
     alumno_id = Column(Integer, ForeignKey('alumnos.id'), nullable=False)
+    materia_id = Column(Integer, ForeignKey('materias.id'), nullable=False)
     calificacion = Column(Integer, nullable=False)
     
     profesor = relationship("Docente")
     alumno = relationship("Alumno")
+    materia = relationship("Materia")

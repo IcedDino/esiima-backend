@@ -264,10 +264,21 @@ def get_profesores_me(current_user: Dict = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
     alumno_id = current_user["user_id"]
-    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).all()
-    profesor_ids = [inscripcion.docente_materia.docente_id for inscripcion in inscripciones]
+    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.docente),
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia)
+    ).all()
     
-    profesores = db.query(DBProfesor).filter(DBProfesor.id.in_(profesor_ids)).all()
+    profesores = []
+    for inscripcion in inscripciones:
+        profesor = inscripcion.docente_materia.docente
+        materia = inscripcion.docente_materia.materia
+        profesores.append({
+            "id": profesor.id,
+            "nombre": profesor.nombre,
+            "materia": materia.nombre,
+            "materia_id": materia.id
+        })
     return profesores
 
 @app.post("/evaluaciones", status_code=status.HTTP_201_CREATED)
@@ -280,6 +291,7 @@ def create_evaluacion(evaluacion: SchemaEvaluacionCreate, current_user: Dict = D
     db_evaluacion = DBEvaluacion(
         profesor_id=evaluacion.profesor_id,
         alumno_id=alumno_id,
+        materia_id=evaluacion.materia_id,
         calificacion=evaluacion.calificacion
     )
     db.add(db_evaluacion)

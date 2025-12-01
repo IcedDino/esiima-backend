@@ -137,12 +137,15 @@ class Documento(BaseModel):
 class Profesor(BaseModel):
     id: int
     nombre: str
+    materia: str
+    materia_id: int
 
     class Config:
         from_attributes = True
 
 class EvaluacionCreate(BaseModel):
     profesor_id: int
+    materia_id: int
     calificacion: int
 
 class Inscripcion(BaseModel):
