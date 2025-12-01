@@ -36,7 +36,8 @@ from .models import (
     TitulacionRequisito as DBTitulacionRequisito,
     AlumnoTitulacion as DBAlumnoTitulacion,
     Pago as DBPago,
-    CatTiposDocumento as DBCatTiposDocumento
+    CatTiposDocumento as DBCatTiposDocumento,
+    CatRoles as DBCatRoles
 )
 #Comment to force redeploy
 from .schemas import (
@@ -67,7 +68,8 @@ from .schemas import (
     Pago as SchemaPago,
     TeacherGroup,
     StudentGrade,
-    StudentGradeUpdate
+    StudentGradeUpdate,
+    StudentRegister
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -144,6 +146,63 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         "role": role,
         "full_name": full_name,
         "message": "login ok"
+    }
+
+@app.post("/enroll/register", status_code=status.HTTP_201_CREATED)
+def register_student(student_data: StudentRegister, db: Session = Depends(get_db)):
+    # Check if email or CURP already exists
+    if db.query(DBUsuario).filter(DBUsuario.email == student_data.email).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    if db.query(DBAlumno).filter(DBAlumno.curp == student_data.curp).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CURP already registered")
+
+    # Create Alumno record
+    new_alumno = DBAlumno(
+        nombre=student_data.nombre,
+        apellido_paterno=student_data.apellidoPaterno,
+        apellido_materno=student_data.apellidoMaterno,
+        fecha_nacimiento=student_data.fechaNacimiento,
+        curp=student_data.curp,
+        email=student_data.email,
+        matricula="PENDING" # Matricula will be generated later by admin
+    )
+    db.add(new_alumno)
+    db.flush() # Use flush to get the new_alumno.id before commit
+
+    # Get student role
+    student_role = db.query(DBCatRoles).filter(DBCatRoles.nombre == "alumno").first()
+    if not student_role:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Student role not found in catalog")
+
+    # Create Usuario record
+    hashed_password = get_password_hash(student_data.password)
+    new_user = DBUsuario(
+        email=student_data.email,
+        password_hash=hashed_password,
+        rol_id=student_role.id,
+        alumno_id=new_alumno.id,
+        debe_cambiar_password=True # Force password change on first login
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_alumno)
+    db.refresh(new_user)
+
+    # Generate access token
+    full_name = f"{new_alumno.nombre} {new_alumno.apellido_paterno} {new_alumno.apellido_materno or ''}".strip()
+    access_token = create_access_token({
+        "sub": new_user.email,
+        "user_id": new_alumno.id,
+        "role": "student",
+        "full_name": full_name
+    })
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": "student",
+        "full_name": full_name,
+        "message": "Student registered successfully"
     }
 
 

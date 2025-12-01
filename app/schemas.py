@@ -6,6 +6,19 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+class StudentRegister(BaseModel):
+    nombre: str
+    apellidoPaterno: str = Field(..., alias="apellido_paterno")
+    apellidoMaterno: Optional[str] = Field(None, alias="apellido_materno")
+    fechaNacimiento: date = Field(..., alias="fecha_nacimiento")
+    curp: str
+    email: str
+    password: str
+
+    class Config:
+        allow_population_by_field_name = True
+        from_attributes = True
+
 class Carrera(BaseModel):
     id: int
     nombre: str
