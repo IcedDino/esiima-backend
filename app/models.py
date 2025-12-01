@@ -553,6 +553,8 @@ class TitulacionRequisito(Base):
     obligatorio = Column(Boolean, default=True)
     orden = Column(Integer)
     activo = Column(Boolean, default=True)
+    unidades_requeridas = Column(Integer)
+    tipo_unidad = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     plan_estudio = relationship("PlanEstudio")
     carrera = relationship("Carrera")
@@ -567,6 +569,7 @@ class AlumnoTitulacion(Base):
     fecha_cumplimiento = Column(Date, nullable=True)
     documento_url = Column(String(255), nullable=True)
     observaciones = Column(Text)
+    unidades_cubiertas = Column(Integer)
     validado_por_id = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
     fecha_validacion = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -703,5 +706,16 @@ class Evaluacion(Base):
     calificacion = Column(Integer, nullable=False)
     
     profesor = relationship("Docente")
+    alumno = relationship("Alumno")
+    materia = relationship("Materia")
+
+class Solicitud(Base):
+    __tablename__ = 'solicitudes'
+    id = Column(Integer, primary_key=True)
+    alumno_id = Column(Integer, ForeignKey('alumnos.id'), nullable=False)
+    materia_id = Column(Integer, ForeignKey('materias.id'), nullable=False)
+    fecha_solicitud = Column(DateTime(timezone=True), server_default=func.now())
+    estatus = Column(String(255), default='Pendiente')
+
     alumno = relationship("Alumno")
     materia = relationship("Materia")
