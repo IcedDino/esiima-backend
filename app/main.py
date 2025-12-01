@@ -16,7 +16,10 @@ from .models import (
     CalificacionParcial as DBCalificacionParcial,
     DocenteMateria as DBDocenteMateria,
     Materia as DBMateria,
-    Grupo as DBGrupo
+    Grupo as DBGrupo,
+    Docente as DBProfesor,
+    Evaluacion as DBEvaluacion,
+    Documento as DBDocumento
 )
 from .schemas import (
     Carrera as SchemaCarrera, 
@@ -25,7 +28,13 @@ from .schemas import (
     AlumnoExtracurricular as SchemaAlumnoExtracurricular,
     Calificacion as SchemaCalificacion,
     VerificationKeyUpdate,
-    PasswordUpdate
+    PasswordUpdate,
+    User as SchemaUser,
+    UserUpdate as SchemaUserUpdate,
+    Profesor as SchemaProfesor,
+    EvaluacionCreate as SchemaEvaluacionCreate,
+    Documento as SchemaDocumento,
+    Inscripcion as SchemaInscripcion
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -41,19 +50,11 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-origins = [
-    "https://esiimav3-frontend-cchnfzcbbzgegucu.mexicocentral-01.azurewebsites.net",
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "http://localhost:8080",
-    "http://localhost:5173",
-    "http://127.0.0.1:5500",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=[
+        "https://esiimav3-frontend-cchnfzcbbzgegucu.mexicocentral-01.azurewebsites.net"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -227,3 +228,89 @@ def read_root():
 @app.get("/carreras/", response_model=List[SchemaCarrera])
 def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return db.query(DBCarrera).offset(skip).limit(limit).all()
+
+@app.get("/users/me", response_model=SchemaUser)
+def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    return user
+
+@app.put("/users/me", response_model=SchemaUser)
+def update_user_me(user_update: SchemaUserUpdate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    update_data = user_update.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(user, key, value)
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+@app.get("/profesores/me", response_model=List[SchemaProfesor])
+def get_profesores_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).all()
+    profesor_ids = [inscripcion.docente_materia.docente_id for inscripcion in inscripciones]
+    
+    profesores = db.query(DBProfesor).filter(DBProfesor.id.in_(profesor_ids)).all()
+    return profesores
+
+@app.post("/evaluaciones", status_code=status.HTTP_201_CREATED)
+def create_evaluacion(evaluacion: SchemaEvaluacionCreate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    db_evaluacion = DBEvaluacion(
+        profesor_id=evaluacion.profesor_id,
+        alumno_id=alumno_id,
+        calificacion=evaluacion.calificacion
+    )
+    db.add(db_evaluacion)
+    db.commit()
+    return {"message": "Evaluación enviada exitosamente."}
+
+@app.get("/documentos/me", response_model=List[SchemaDocumento])
+def get_documentos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    documentos = db.query(DBDocumento).filter(DBDocumento.alumno_id == alumno_id).all()
+    
+    # This is a placeholder as there is no direct mapping for clave_doc and entregado
+    # in the Documento model. You might need to adjust this based on your actual model logic.
+    return [{"clave_doc": "N/A", "nombre": doc.nombre_archivo, "entregado": True, "observaciones": doc.comentarios} for doc in documentos]
+
+@app.get("/inscripciones/me", response_model=List[SchemaInscripcion])
+def get_inscripciones_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales)
+    ).all()
+
+    results = []
+    for inscripcion in inscripciones:
+        kardex = inscripcion.kardex
+        parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales} if kardex else {}
+        
+        results.append({
+            "materia": inscripcion.docente_materia.materia,
+            "calificacion_parcial1": parciales.get(1),
+            "calificacion_parcial2": parciales.get(2),
+            "calificacion_parcial3": parciales.get(3),
+            "promedio_final": kardex.calificacion_final if kardex else None
+        })
+    return results

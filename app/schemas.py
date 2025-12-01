@@ -76,12 +76,11 @@ class GrupoSchema(BaseModel):
         from_attributes = True
 
 class Calificacion(BaseModel):
-    materia: MateriaSchema = Field(..., alias="nombre_materia")
-    grupo: GrupoSchema = Field(..., alias="nombre_grupo")
-    parcial1: Optional[float] = None
-    parcial2: Optional[float] = None
-    parcial3: Optional[float] = None
-    promedio: Optional[float] = Field(None, alias="calificacion_final")
+    materia: MateriaSchema
+    calificacion_parcial1: Optional[float] = None
+    calificacion_parcial2: Optional[float] = None
+    calificacion_parcial3: Optional[float] = None
+    promedio_final: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -94,3 +93,64 @@ class VerificationKeyUpdate(BaseModel):
 class PasswordUpdate(BaseModel):
     current_password: str
     new_password: str
+
+class User(BaseModel):
+    nombre: str
+    email: str
+    calle: Optional[str] = None
+    num_ext: Optional[str] = None
+    num_int: Optional[str] = None
+    colonia: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    municipio: Optional[str] = None
+    estado: Optional[str] = None
+    telefono: Optional[str] = None
+    ciclo_escolar: Optional[str] = None
+    nivel_estudios: Optional[str] = None
+    carrera: Optional[str] = None
+    semestre_grupo: Optional[str] = None
+    cursa_actualmente: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    email: str
+    calle: Optional[str] = None
+    num_ext: Optional[str] = None
+    num_int: Optional[str] = None
+    colonia: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    municipio: Optional[str] = None
+    estado: Optional[str] = None
+    telefono: Optional[str] = None
+
+class Documento(BaseModel):
+    clave_doc: str
+    nombre: str
+    entregado: bool
+    observaciones: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class Profesor(BaseModel):
+    id: int
+    nombre: str
+
+    class Config:
+        from_attributes = True
+
+class EvaluacionCreate(BaseModel):
+    profesor_id: int
+    calificacion: int
+
+class Inscripcion(BaseModel):
+    materia: MateriaSchema
+    calificacion_parcial1: Optional[float]
+    calificacion_parcial2: Optional[float]
+    calificacion_parcial3: Optional[float]
+    promedio_final: Optional[float]
+
+    class Config:
+        from_attributes = True

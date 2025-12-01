@@ -29,6 +29,17 @@ class Alumno(Base):
     creditos_aprobados = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    calle = Column(String(255))
+    num_ext = Column(String(255))
+    num_int = Column(String(255))
+    colonia = Column(String(255))
+    codigo_postal = Column(String(255))
+    municipio = Column(String(255))
+    estado = Column(String(255))
+    ciclo_escolar = Column(String(255))
+    nivel_estudios = Column(String(255))
+    semestre_grupo = Column(String(255))
+    cursa_actualmente = Column(String(255))
 
     usuario = relationship("Usuario", back_populates="alumno", uselist=False)
     plan_estudio = relationship("PlanEstudio")
@@ -680,3 +691,13 @@ class CalendarioAcademico(Base):
     periodo = relationship("Periodo")
     tipo = relationship("CatTiposEventoCalendario")
     __table_args__ = (Index("idx_calendario_academico_periodo_fecha", "periodo_id", "fecha_inicio"),)
+
+class Evaluacion(Base):
+    __tablename__ = 'evaluaciones'
+    id = Column(Integer, primary_key=True)
+    profesor_id = Column(Integer, ForeignKey('docentes.id'), nullable=False)
+    alumno_id = Column(Integer, ForeignKey('alumnos.id'), nullable=False)
+    calificacion = Column(Integer, nullable=False)
+    
+    profesor = relationship("Docente")
+    alumno = relationship("Alumno")
