@@ -556,8 +556,17 @@ def get_horario_me(current_user: Dict = Depends(get_current_user), db: Session =
 
     alumno_id = current_user["user_id"]
     
-    horarios = db.query(DBHorarioDetalle).join(DBDocenteMateria).join(DBInscripcion).filter(
-        DBInscripcion.alumno_id == alumno_id
+    # Get the student's current cuatrimestre
+    alumno = db.query(DBAlumno).filter(DBAlumno.id == alumno_id).first()
+    if not alumno:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    current_cuatrimestre = alumno.cuatrimestre_actual
+
+    # Query for horario details, filtering by the student's current cuatrimestre
+    horarios = db.query(DBHorarioDetalle).join(DBDocenteMateria).join(DBInscripcion).join(DBMateria).filter(
+        DBInscripcion.alumno_id == alumno_id,
+        DBMateria.cuatrimestre == current_cuatrimestre
     ).options(
         joinedload(DBHorarioDetalle.docente_materia).joinedload(DBDocenteMateria.materia)
     ).all()
