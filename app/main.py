@@ -359,8 +359,31 @@ def get_servicio_social_me(current_user: Dict = Depends(get_current_user), db: S
             raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
         alumno_id = current_user["user_id"]
-        servicio_social = db.query(DBServicioSocial).filter(DBServicioSocial.alumno_id == alumno_id).all()
-        return servicio_social
+        
+        # Explicitly load the 'estatus' relationship
+        servicio_social_records = db.query(DBServicioSocial).filter(DBServicioSocial.alumno_id == alumno_id).options(
+            joinedload(DBServicioSocial.estatus)
+        ).all()
+
+        results = []
+        for record in servicio_social_records:
+            # Manually construct dictionary to ensure all fields are present and handle potential None values
+            record_data = {
+                "institucion": record.institucion,
+                "dependencia": record.dependencia,
+                "programa": record.programa,
+                "horas_requeridas": record.horas_requeridas,
+                "horas_cumplidas": record.horas_cumplidas,
+                "fecha_inicio": record.fecha_inicio,
+                "fecha_fin": record.fecha_fin,
+                "estatus_id": record.estatus_id,
+                "documento_url": record.documento_url,
+                "carta_aceptacion_url": record.carta_aceptacion_url,
+            }
+            logging.debug(f"ServicioSocial record data: {record_data}") # Log the data
+            results.append(record_data)
+        
+        return results
     except Exception as e:
         logging.error(traceback.format_exc())
         raise HTTPException(
