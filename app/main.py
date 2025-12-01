@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict
 from collections import defaultdict
 from sqlalchemy import func
+import traceback
+import logging
 
 from .database import SessionLocal, engine, Base
 from .models import (
@@ -321,7 +323,7 @@ def get_documentos_me(current_user: Dict = Depends(get_current_user), db: Sessio
     documentos = db.query(DBDocumento).filter(DBDocumento.alumno_id == alumno_id).all()
     
     # This is a placeholder as there is no direct mapping for clave_doc and entregado
-    # in the Documento model. You might need to adjust this based on your actual logic.
+    # in the Documento model. You might need to adjust this based on your actual model logic.
     return [{"clave_doc": "N/A", "nombre": doc.nombre_archivo, "entregado": True, "observaciones": doc.comentarios} for doc in documentos]
 
 @app.get("/inscripciones/me", response_model=List[SchemaInscripcion])
@@ -331,9 +333,8 @@ def get_inscripciones_me(current_user: Dict = Depends(get_current_user), db: Ses
 
     alumno_id = current_user["user_id"]
     inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
-        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales),
         joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
-        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.grupo)
+        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales)
     ).all()
 
     results = []
@@ -370,44 +371,61 @@ def get_practicas_me(current_user: Dict = Depends(get_current_user), db: Session
 
 @app.get("/kardex/me", response_model=Dict[str, List[SchemaKardexEntry]])
 def get_kardex_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if current_user["role"].lower() != "alumno":
-        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+    try:
+        if current_user["role"].lower() != "alumno":
+            raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
-    alumno_id = current_user["user_id"]
-    
-    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
-        joinedload(DBInscripcion.kardex),
-        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
-        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.periodo)
-    ).all()
-
-    kardex_data = defaultdict(list)
-    for inscripcion in inscripciones:
-        materia = inscripcion.docente_materia.materia
-        periodo = inscripcion.docente_materia.periodo
-        kardex = inscripcion.kardex
-
-        if not all([materia, periodo, kardex]):
-            continue
-
-        semestre = str(materia.cuatrimestre)
+        alumno_id = current_user["user_id"]
         
-        # Placeholder logic for oports_agotadas and alto_riesgo
-        oports_agotadas = kardex.intento or 1
-        alto_riesgo = oports_agotadas > 1
+        inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+            joinedload(DBInscripcion.kardex),
+            joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+            joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.periodo)
+        ).all()
 
-        entry = SchemaKardexEntry(
-            clave=materia.clave,
-            materia=materia.nombre,
-            oports_agotadas=oports_agotadas,
-            alto_riesgo=alto_riesgo,
-            periodo=periodo.nombre,
-            calificacion=kardex.calificacion_final,
-            tipo_examen=kardex.tipo_examen or "Ordinario"
+        kardex_data = defaultdict(list)
+        for inscripcion in inscripciones:
+            # Defensive checks for related objects
+            if not inscripcion.docente_materia or not inscripcion.docente_materia.materia or not inscripcion.docente_materia.periodo:
+                continue
+
+            materia = inscripcion.docente_materia.materia
+            periodo = inscripcion.docente_materia.periodo
+            kardex = inscripcion.kardex
+
+            # Handle cases where a kardex record might not exist for an inscription
+            if kardex:
+                oports_agotadas = kardex.intento or 1
+                calificacion = kardex.calificacion_final
+                tipo_examen = kardex.tipo_examen or "Ordinario"
+            else:
+                oports_agotadas = 1
+                calificacion = None
+                tipo_examen = "N/A"
+
+            semestre = str(materia.cuatrimestre)
+            alto_riesgo = oports_agotadas > 1
+
+            entry = SchemaKardexEntry(
+                clave=materia.clave,
+                materia=materia.nombre,
+                oports_agotadas=oports_agotadas,
+                alto_riesgo=alto_riesgo,
+                periodo=periodo.nombre,
+                calificacion=calificacion,
+                tipo_examen=tipo_examen
+            )
+            kardex_data[semestre].append(entry)
+
+        return kardex_data
+    except Exception as e:
+        # Log the full error traceback to the server console
+        logging.error(traceback.format_exc())
+        # Return a more informative error to the client
+        raise HTTPException(
+            status_code=500,
+            detail=f"An internal server error occurred: {str(e)}"
         )
-        kardex_data[semestre].append(entry)
-
-    return kardex_data
 
 @app.get("/materias/me", response_model=List[SchemaMateriaFaltas])
 def get_materias_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
