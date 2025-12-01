@@ -450,6 +450,21 @@ def get_materias_me(current_user: Dict = Depends(get_current_user), db: Session 
 
     return materias_data
 
+@app.get("/faltas/me/{materia_id}", response_model=List[SchemaFaltaDetalle])
+def get_faltas_me(materia_id: int, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+
+    faltas = db.query(DBAsistencia).join(DBInscripcion).filter(
+        DBInscripcion.alumno_id == alumno_id,
+        DBInscripcion.docente_materia.has(materia_id=materia_id),
+        DBAsistencia.presente == False
+    ).all()
+
+    return faltas
+
 @app.get("/examenes/me", response_model=List[SchemaExamen])
 def get_examenes_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
     if current_user["role"].lower() != "alumno":
