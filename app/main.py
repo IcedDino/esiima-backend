@@ -276,17 +276,23 @@ def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 @app.get("/users/me", response_model=SchemaUser)
 def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
     try:
+        user_email = current_user.get("sub")
+        if not user_email:
+            logging.error(f"Error in /users/me: 'sub' key not found in token payload. Payload: {current_user}")
+            raise HTTPException(status_code=403, detail="Invalid token: User identifier not found.")
+
         user = db.query(DBUsuario).options(
             joinedload(DBUsuario.alumno).joinedload(DBAlumno.plan_estudio).joinedload(DBPlanEstudio.carrera),
             joinedload(DBUsuario.docente)
-        ).filter(DBUsuario.email == current_user["sub"]).first()
+        ).filter(DBUsuario.email == user_email).first()
 
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"User with email {user_email} not found.")
 
         if user.alumno:
+            full_name = f"{user.alumno.nombre} {user.alumno.apellido_paterno} {user.alumno.apellido_materno or ''}".strip()
             return SchemaUser(
-                nombre=user.alumno.nombre,
+                nombre=full_name,
                 email=user.email,
                 calle=user.alumno.calle,
                 num_ext=user.alumno.num_ext,
@@ -301,16 +307,17 @@ def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = De
                 carrera=user.alumno.plan_estudio.carrera.nombre if user.alumno.plan_estudio and user.alumno.plan_estudio.carrera else None,
                 semestre_grupo=user.alumno.semestre_grupo,
                 cursa_actualmente=user.alumno.cursa_actualmente,
-                promedio_semestral=None # This field is not in the Alumno model
+                promedio_semestral=None 
             )
         elif user.docente:
+            full_name = f"{user.docente.nombre} {user.docente.apellido_paterno} {user.docente.apellido_materno or ''}".strip()
             return SchemaUser(
-                nombre=user.docente.nombre,
+                nombre=full_name,
                 email=user.email
             )
         else:
             return SchemaUser(
-                nombre="N/A",
+                nombre="Usuario sin rol asignado",
                 email=user.email
             )
     except Exception as e:
