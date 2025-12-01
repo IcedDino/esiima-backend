@@ -35,6 +35,7 @@ from .models import (
     TitulacionRequisito as DBTitulacionRequisito,
     AlumnoTitulacion as DBAlumnoTitulacion
 )
+#Comment to force redeploy
 from .schemas import (
     Carrera as SchemaCarrera, 
     UserLogin, 
