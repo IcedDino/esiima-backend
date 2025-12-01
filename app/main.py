@@ -354,12 +354,19 @@ def get_inscripciones_me(current_user: Dict = Depends(get_current_user), db: Ses
 
 @app.get("/serviciosocial/me", response_model=List[SchemaServicioSocial])
 def get_servicio_social_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    if current_user["role"].lower() != "alumno":
-        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+    try:
+        if current_user["role"].lower() != "alumno":
+            raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
-    alumno_id = current_user["user_id"]
-    servicio_social = db.query(DBServicioSocial).filter(DBServicioSocial.alumno_id == alumno_id).all()
-    return servicio_social
+        alumno_id = current_user["user_id"]
+        servicio_social = db.query(DBServicioSocial).filter(DBServicioSocial.alumno_id == alumno_id).all()
+        return servicio_social
+    except Exception as e:
+        logging.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"An internal server error occurred while fetching social service data: {str(e)}"
+        )
 
 @app.get("/practicas/me", response_model=List[SchemaPracticasProfesionales])
 def get_practicas_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
