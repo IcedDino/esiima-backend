@@ -33,7 +33,8 @@ from .models import (
     HorarioDetalle as DBHorarioDetalle,
     Solicitud as DBSolicitud,
     TitulacionRequisito as DBTitulacionRequisito,
-    AlumnoTitulacion as DBAlumnoTitulacion
+    AlumnoTitulacion as DBAlumnoTitulacion,
+    Pago as DBPago
 )
 #Comment to force redeploy
 from .schemas import (
@@ -60,7 +61,8 @@ from .schemas import (
     SolicitudCreate as SchemaSolicitudCreate,
     RequisitoTitulacion as SchemaRequisitoTitulacion,
     FaltaDetalle as SchemaFaltaDetalle,
-    PartialGrade as SchemaPartialGrade
+    PartialGrade as SchemaPartialGrade,
+    Pago as SchemaPago
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -740,3 +742,28 @@ def get_partial_grades_for_materia(
     ).all()
 
     return partial_grades
+
+@app.get("/pagos/me", response_model=List[SchemaPago])
+def get_pagos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    pagos = db.query(DBPago).filter(DBPago.alumno_id == alumno_id).options(
+        joinedload(DBPago.estatus),
+        joinedload(DBPago.periodo)
+    ).all()
+
+    if not pagos:
+        return []
+
+    # This is a placeholder implementation. You will need to adjust it to your actual logic for payments.
+    return [
+        {
+            "estado": pago.estatus.nombre,
+            "ciclo": pago.periodo.nombre,
+            "cargo": pago.monto_total,
+            "abono": pago.monto_pagado,
+            "saldo": pago.monto_total - pago.monto_pagado
+        } for pago in pagos
+    ]
