@@ -348,6 +348,7 @@ class Kardex(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     inscripcion = relationship("Inscripcion")
     estatus = relationship("CatEstatusKardex")
+    calificaciones_parciales = relationship("CalificacionParcial", back_populates="kardex")
     __table_args__ = (
         Index("idx_kardex_inscripcion_id", "inscripcion_id"),
         Index("idx_kardex_estatus_id", "estatus_id"),
@@ -362,7 +363,7 @@ class CalificacionParcial(Base):
     porcentaje_peso = Column(Float)
     fecha_captura = Column(DateTime(timezone=True), server_default=func.now())
     publicado = Column(Boolean, default=False)
-    kardex = relationship("Kardex")
+    kardex = relationship("Kardex", back_populates="calificaciones_parciales")
     __table_args__ = (UniqueConstraint("kardex_id", "unidad", name="uq_calificaciones_parciales_kardex_unidad"),)
 
 class Asistencia(Base):
