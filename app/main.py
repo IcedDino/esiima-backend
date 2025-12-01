@@ -62,7 +62,10 @@ from .schemas import (
     RequisitoTitulacion as SchemaRequisitoTitulacion,
     FaltaDetalle as SchemaFaltaDetalle,
     PartialGrade as SchemaPartialGrade,
-    Pago as SchemaPago
+    Pago as SchemaPago,
+    TeacherGroup,
+    StudentGrade,
+    StudentGradeUpdate
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -767,3 +770,109 @@ def get_pagos_me(current_user: Dict = Depends(get_current_user), db: Session = D
             "saldo": pago.monto_total - pago.monto_pagado
         } for pago in pagos
     ]
+
+@app.get("/teacher/groups", response_model=List[TeacherGroup])
+def get_teacher_groups(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "Docente":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a teacher")
+
+    docente_id = current_user["user_id"]
+    
+    docente_materias = db.query(DBDocenteMateria).filter(
+        DBDocenteMateria.docente_id == docente_id,
+        DBDocenteMateria.activo == True
+    ).options(
+        joinedload(DBDocenteMateria.materia),
+        joinedload(DBDocenteMateria.grupo)
+    ).all()
+
+    if not docente_materias:
+        return []
+
+    # The frontend expects a list of groups, so we need to extract the group and materia from each DocenteMateria
+    teacher_groups = []
+    for dm in docente_materias:
+        if dm.grupo and dm.materia:
+            teacher_groups.append(
+                TeacherGroup(
+                    id=dm.grupo.id,
+                    nombre=dm.grupo.nombre,
+                    materia=dm.materia
+                )
+            )
+            
+    return teacher_groups
+
+@app.get("/groups/{group_id}/students", response_model=List[SchemaAlumno])
+def get_group_students(group_id: int, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "Docente":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a teacher")
+
+    inscripciones = db.query(DBInscripcion).filter(
+        DBInscripcion.docente_materia.has(grupo_id=group_id)
+    ).options(
+        joinedload(DBInscripcion.alumno)
+    ).all()
+
+    return [inscripcion.alumno for inscripcion in inscripciones]
+
+@app.get("/groups/{group_id}/grades", response_model=List[StudentGrade])
+def get_group_grades(group_id: int, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "Docente":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a teacher")
+
+    inscripciones = db.query(DBInscripcion).filter(
+        DBInscripcion.docente_materia.has(grupo_id=group_id)
+    ).options(
+        joinedload(DBInscripcion.alumno),
+        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales)
+    ).all()
+
+    student_grades = []
+    for inscripcion in inscripciones:
+        parciales = {cp.unidad: cp.calificacion for cp in inscripcion.kardex.calificaciones_parciales} if inscripcion.kardex else {}
+        student_grades.append(
+            StudentGrade(
+                student=inscripcion.alumno,
+                parcial1=parciales.get(1),
+                parcial2=parciales.get(2),
+                parcial3=parciales.get(3)
+            )
+        )
+    return student_grades
+
+@app.post("/groups/{group_id}/grades", status_code=status.HTTP_204_NO_CONTENT)
+def update_group_grades(group_id: int, grades: List[StudentGradeUpdate], current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "Docente":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a teacher")
+
+    for grade_update in grades:
+        inscripcion = db.query(DBInscripcion).filter(
+            DBInscripcion.alumno_id == grade_update.student_id,
+            DBInscripcion.docente_materia.has(grupo_id=group_id)
+        ).first()
+
+        if not inscripcion:
+            continue
+
+        kardex = db.query(DBKardex).filter(DBKardex.inscripcion_id == inscripcion.id).first()
+        if not kardex:
+            kardex = DBKardex(inscripcion_id=inscripcion.id, estatus_id=1) # Assuming 1 is a default status
+            db.add(kardex)
+            db.flush()
+
+        for parcial, calificacion in [ (1, grade_update.parcial1), (2, grade_update.parcial2), (3, grade_update.parcial3) ]:
+            if calificacion is None:
+                continue
+            
+            calificacion_parcial = db.query(DBCalificacionParcial).filter(
+                DBCalificacionParcial.kardex_id == kardex.id,
+                DBCalificacionParcial.unidad == parcial
+            ).first()
+
+            if calificacion_parcial:
+                calificacion_parcial.calificacion = calificacion
+            else:
+                db.add(DBCalificacionParcial(kardex_id=kardex.id, unidad=parcial, calificacion=calificacion))
+
+    db.commit()

@@ -72,6 +72,7 @@ class MateriaSchema(BaseModel):
         from_attributes = True
 
 class GrupoSchema(BaseModel):
+    id: int
     nombre: str
 
     class Config:
@@ -282,3 +283,23 @@ class Pago(BaseModel):
 
     class Config:
         from_attributes = True
+
+class TeacherGroup(BaseModel):
+    id: int
+    nombre: str
+    materia: MateriaSchema
+
+    class Config:
+        from_attributes = True
+
+class StudentGrade(BaseModel):
+    student: Alumno
+    parcial1: Optional[float] = None
+    parcial2: Optional[float] = None
+    parcial3: Optional[float] = None
+
+class StudentGradeUpdate(BaseModel):
+    student_id: int
+    parcial1: Optional[float] = None
+    parcial2: Optional[float] = None
+    parcial3: Optional[float] = None
