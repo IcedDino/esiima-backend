@@ -170,13 +170,11 @@ async def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current
 
         alumno_id = current_user["user_id"]
         
-        # Get the student's current semester
         alumno = db.query(DBAlumno).filter(DBAlumno.id == alumno_id).first()
         if not alumno:
             raise HTTPException(status_code=404, detail="Student not found")
         current_cuatrimestre = alumno.cuatrimestre_actual
 
-        # Filter inscriptions by the student's current semester
         inscripciones = db.query(DBInscripcion).join(DBDocenteMateria).join(DBMateria).filter(
             DBInscripcion.alumno_id == alumno_id,
             DBMateria.cuatrimestre == current_cuatrimestre
@@ -191,21 +189,28 @@ async def read_alumno_calificaciones_me(current_user: Dict = Depends(get_current
 
         calificaciones_list = []
         for inscripcion in inscripciones:
-            kardex = inscripcion.kardex
-            if not kardex:
+            if not inscripcion.docente_materia or not inscripcion.docente_materia.materia:
                 continue
 
-            parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales}
+            kardex = inscripcion.kardex
+            
+            parcial1, parcial2, parcial3, promedio = None, None, None, None
 
-            calificacion_data = {
-                "materia": inscripcion.docente_materia.materia,
-                "grupo": inscripcion.docente_materia.grupo,
-                "calificacion_parcial1": parciales.get(1),
-                "calificacion_parcial2": parciales.get(2),
-                "calificacion_parcial3": parciales.get(3),
-                "promedio_final": kardex.calificacion_final
-            }
-            calificaciones_list.append(calificacion_data)
+            if kardex:
+                parciales = {cp.unidad: cp.calificacion for cp in kardex.calificaciones_parciales}
+                parcial1 = parciales.get(1)
+                parcial2 = parciales.get(2)
+                parcial3 = parciales.get(3)
+                promedio = kardex.calificacion_final
+
+            calificacion_obj = SchemaCalificacion(
+                materia=inscripcion.docente_materia.materia,
+                calificacion_parcial1=parcial1,
+                calificacion_parcial2=parcial2,
+                calificacion_parcial3=parcial3,
+                promedio_final=promedio
+            )
+            calificaciones_list.append(calificacion_obj)
 
         return calificaciones_list
     except Exception as e:
