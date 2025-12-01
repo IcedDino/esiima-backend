@@ -104,8 +104,11 @@ def get_db():
 
 @app.post("/login")
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(DBUsuario).options(joinedload(DBUsuario.rol)).filter(
-        DBUsuario.email == user_credentials.email).first()
+    user = db.query(DBUsuario).options(
+        joinedload(DBUsuario.rol),
+        joinedload(DBUsuario.alumno),
+        joinedload(DBUsuario.docente)
+    ).filter(DBUsuario.email == user_credentials.email).first()
 
     if not user or not verify_password(user_credentials.password, user.password_hash):
         raise HTTPException(
@@ -117,23 +120,27 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     if user_id is None:
         raise HTTPException(status_code=403, detail="User account is not fully configured")
 
-    # Standardize role names
     role = "unknown"
-    if user.rol.nombre.lower() == "docente":
+    full_name = "Usuario"
+    if user.rol.nombre.lower() == "docente" and user.docente:
         role = "teacher"
-    elif user.rol.nombre.lower() == "alumno":
+        full_name = f"{user.docente.nombre} {user.docente.apellido_paterno} {user.docente.apellido_materno or ''}".strip()
+    elif user.rol.nombre.lower() == "alumno" and user.alumno:
         role = "student"
+        full_name = f"{user.alumno.nombre} {user.alumno.apellido_paterno} {user.alumno.apellido_materno or ''}".strip()
 
     token = create_access_token({
         "sub": user.email,
         "user_id": user_id,
-        "role": role
+        "role": role,
+        "full_name": full_name
     })
 
     return {
         "access_token": token,
         "token_type": "bearer",
-        "role": role,  # Return the standardized role to the frontend
+        "role": role,
+        "full_name": full_name,
         "message": "login ok"
     }
 
