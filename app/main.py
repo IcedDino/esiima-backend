@@ -378,35 +378,19 @@ def get_servicio_social_me(current_user: Dict = Depends(get_current_user), db: S
 
         alumno_id = current_user["user_id"]
         
-        # Explicitly load the 'estatus' relationship
         servicio_social_records = db.query(DBServicioSocial).filter(DBServicioSocial.alumno_id == alumno_id).options(
             joinedload(DBServicioSocial.estatus)
         ).all()
 
-        results = []
-        for record in servicio_social_records:
-            # Manually construct dictionary to ensure all fields are present and handle potential None values
-            record_data = {
-                "institucion": record.institucion,
-                "dependencia": record.dependencia,
-                "programa": record.programa,
-                "horas_requeridas": record.horas_requeridas,
-                "horas_cumplidas": record.horas_cumplidas,
-                "fecha_inicio": record.fecha_inicio,
-                "fecha_fin": record.fecha_fin,
-                "estatus_id": record.estatus_id,
-                "documento_url": record.documento_url,
-                "carta_aceptacion_url": record.carta_aceptacion_url,
-            }
-            logging.debug(f"ServicioSocial record data: {record_data}") # Log the data
-            results.append(record_data)
-        
-        return results
+        if not servicio_social_records:
+            return []
+
+        return servicio_social_records
     except Exception as e:
-        logging.error(traceback.format_exc())
+        logging.error(f"Error in /serviciosocial/me: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"An internal server error occurred while fetching social service data: {str(e)}"
+            detail=f"An unexpected error occurred: {str(e)}. Check server logs for more details."
         )
 
 @app.get("/practicas/me", response_model=List[SchemaPracticasProfesionales])
