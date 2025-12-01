@@ -65,6 +65,7 @@ class AlumnoExtracurricular(BaseModel):
 
 class MateriaSchema(BaseModel):
     nombre: str
+    faltas_permitidas: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -184,6 +185,31 @@ class PracticasProfesionales(BaseModel):
     estatus_id: int
     documento_url: Optional[str] = None
     carta_aceptacion_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class KardexEntry(BaseModel):
+    clave: str
+    materia: str
+    oports_agotadas: int
+    alto_riesgo: bool
+    periodo: str
+    calificacion: Optional[float]
+    tipo_examen: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class MateriaFaltas(BaseModel):
+    horas_semana: int
+    nombre: str
+    semestre: int
+    grupo: str
+    faltas_permitidas: Optional[int]
+    total_faltas: int
+    horas_teoricas: int
+    horas_practicas: int
 
     class Config:
         from_attributes = True

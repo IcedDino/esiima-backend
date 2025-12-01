@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict
+from collections import defaultdict
+from sqlalchemy import func
 
 from .database import SessionLocal, engine, Base
 from .models import (
@@ -21,7 +23,9 @@ from .models import (
     Evaluacion as DBEvaluacion,
     Documento as DBDocumento,
     ServicioSocial as DBServicioSocial,
-    PracticasProfesionales as DBPracticasProfesionales
+    PracticasProfesionales as DBPracticasProfesionales,
+    Asistencia as DBAsistencia,
+    Periodo as DBPeriodo
 )
 from .schemas import (
     Carrera as SchemaCarrera, 
@@ -38,7 +42,9 @@ from .schemas import (
     Documento as SchemaDocumento,
     Inscripcion as SchemaInscripcion,
     ServicioSocial as SchemaServicioSocial,
-    PracticasProfesionales as SchemaPracticasProfesionales
+    PracticasProfesionales as SchemaPracticasProfesionales,
+    KardexEntry as SchemaKardexEntry,
+    MateriaFaltas as SchemaMateriaFaltas
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -239,10 +245,43 @@ def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 
 @app.get("/users/me", response_model=SchemaUser)
 def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
-    if not user:
+    alumno = db.query(DBAlumno).options(
+        joinedload(DBAlumno.plan_estudio).joinedload(DBPlanEstudio.carrera)
+    ).filter(DBAlumno.id == current_user["user_id"]).first()
+
+    if not alumno:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
+
+    # Calculate promedio_semestral
+    current_period = db.query(DBPeriodo).filter(DBPeriodo.activo == True).first()
+    promedio_semestral = None
+    if current_period and alumno.cuatrimestre_actual:
+        grades = db.query(func.avg(DBKardex.calificacion_final)).join(DBInscripcion).join(DBDocenteMateria).filter(
+            DBInscripcion.alumno_id == alumno.id,
+            DBDocenteMateria.periodo_id == current_period.id,
+            DBDocenteMateria.materia.has(cuatrimestre=alumno.cuatrimestre_actual)
+        ).scalar()
+        promedio_semestral = grades if grades is not None else 0.0
+
+    user_data = {
+        "nombre": alumno.nombre,
+        "email": alumno.email,
+        "calle": alumno.calle,
+        "num_ext": alumno.num_ext,
+        "num_int": alumno.num_int,
+        "colonia": alumno.colonia,
+        "codigo_postal": alumno.codigo_postal,
+        "municipio": alumno.municipio,
+        "estado": alumno.estado,
+        "telefono": alumno.telefono,
+        "ciclo_escolar": alumno.ciclo_escolar,
+        "nivel_estudios": alumno.nivel_estudios,
+        "carrera": alumno.plan_estudio.carrera.nombre if alumno.plan_estudio and alumno.plan_estudio.carrera else None,
+        "semestre_grupo": alumno.semestre_grupo,
+        "cursa_actualmente": alumno.cursa_actualmente,
+        "promedio_semestral": promedio_semestral
+    }
+    return SchemaUser(**user_data)
 
 @app.put("/users/me", response_model=SchemaUser)
 def update_user_me(user_update: SchemaUserUpdate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -352,3 +391,85 @@ def get_practicas_me(current_user: Dict = Depends(get_current_user), db: Session
     alumno_id = current_user["user_id"]
     practicas = db.query(DBPracticasProfesionales).filter(DBPracticasProfesionales.alumno_id == alumno_id).all()
     return practicas
+
+@app.get("/kardex/me", response_model=Dict[str, List[SchemaKardexEntry]])
+def get_kardex_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+        joinedload(DBInscripcion.kardex),
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.periodo)
+    ).all()
+
+    kardex_data = defaultdict(list)
+    for inscripcion in inscripciones:
+        materia = inscripcion.docente_materia.materia
+        periodo = inscripcion.docente_materia.periodo
+        kardex = inscripcion.kardex
+
+        if not all([materia, periodo, kardex]):
+            continue
+
+        semestre = str(materia.cuatrimestre)
+        
+        # Placeholder logic for oports_agotadas and alto_riesgo
+        oports_agotadas = kardex.intento or 1
+        alto_riesgo = oports_agotadas > 1
+
+        entry = SchemaKardexEntry(
+            clave=materia.clave,
+            materia=materia.nombre,
+            oports_agotadas=oports_agotadas,
+            alto_riesgo=alto_riesgo,
+            periodo=periodo.nombre,
+            calificacion=kardex.calificacion_final,
+            tipo_examen=kardex.tipo_examen or "Ordinario"
+        )
+        kardex_data[semestre].append(entry)
+
+    return kardex_data
+
+@app.get("/materias/me", response_model=List[SchemaMateriaFaltas])
+def get_materias_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.grupo)
+    ).all()
+
+    materias_data = []
+    for inscripcion in inscripciones:
+        materia = inscripcion.docente_materia.materia
+        grupo = inscripcion.docente_materia.grupo
+
+        if not all([materia, grupo]):
+            continue
+
+        total_faltas = db.query(DBAsistencia).filter(
+            DBAsistencia.inscripcion_id == inscripcion.id,
+            DBAsistencia.presente == False
+        ).count()
+        
+        horas_semana = (materia.horas_teoricas or 0) + (materia.horas_practicas or 0)
+
+        entry = SchemaMateriaFaltas(
+            horas_semana=horas_semana,
+            nombre=materia.nombre,
+            semestre=materia.cuatrimestre,
+            grupo=grupo.nombre,
+            faltas_permitidas=materia.faltas_permitidas or 10, # Default to 10 if not set
+            total_faltas=total_faltas,
+            horas_teoricas=materia.horas_teoricas or 0,
+            horas_practicas=materia.horas_practicas or 0
+        )
+        materias_data.append(entry)
+
+    return materias_data
