@@ -272,3 +272,13 @@ class PartialGrade(BaseModel):
     class Config:
         from_attributes = True
         populate_by_name = True
+
+class Pago(BaseModel):
+    estado: str
+    ciclo: str
+    cargo: float
+    abono: float
+    saldo: float
+
+    class Config:
+        from_attributes = True
