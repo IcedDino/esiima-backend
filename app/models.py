@@ -324,6 +324,7 @@ class Inscripcion(Base):
     alumno = relationship("Alumno")
     docente_materia = relationship("DocenteMateria")
     estatus = relationship("CatEstatusInscripcion")
+    kardex = relationship("Kardex", back_populates="inscripcion", uselist=False)
     __table_args__ = (
         UniqueConstraint("alumno_id", "docente_materia_id", name="uq_inscripciones_alumno_docente_materia"),
         Index("idx_inscripciones_docente_materia_id", "docente_materia_id"),
