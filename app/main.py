@@ -65,8 +65,6 @@ import os
 SECRET_KEY = os.getenv("SECRET_KEY", "a_default_secret_key_if_not_set")
 ALGORITHM = "HS256"
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
 
 app.add_middleware(
@@ -537,3 +535,34 @@ def create_solicitud(solicitud: SchemaSolicitudCreate, current_user: Dict = Depe
     
     db.commit()
     return {"message": "Solicitud enviada exitosamente."}
+
+@app.get("/requisitos/me", response_model=List[SchemaRequisitoTitulacion])
+def get_requisitos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    alumno = db.query(DBAlumno).filter(DBAlumno.id == alumno_id).first()
+    if not alumno:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    requisitos = db.query(DBTitulacionRequisito).filter(
+        DBTitulacionRequisito.plan_estudio_id == alumno.plan_estudio_id
+    ).all()
+
+    results = []
+    for req in requisitos:
+        alumno_req = db.query(DBAlumnoTitulacion).filter(
+            DBAlumnoTitulacion.alumno_id == alumno_id,
+            DBAlumnoTitulacion.requisito_id == req.id
+        ).first()
+
+        results.append({
+            "nombre": req.requisito,
+            "unidades_a_cubrir": req.unidades_requeridas or 0,
+            "tipo_unidad": req.tipo_unidad or "N/A",
+            "unidades_cubiertas": alumno_req.unidades_cubiertas if alumno_req else 0
+        })
+
+    return results
