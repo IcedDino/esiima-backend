@@ -8,6 +8,7 @@ from sqlalchemy import func
 import traceback
 import logging
 import shutil
+from datetime import date # Import date
 
 ##This is a random comment to force redeploy
 
@@ -37,7 +38,8 @@ from .models import (
     AlumnoTitulacion as DBAlumnoTitulacion,
     Pago as DBPago,
     CatTiposDocumento as DBCatTiposDocumento,
-    CatRoles as DBCatRoles
+    CatRoles as DBCatRoles,
+    CatEstatusAlumnos as DBCatEstatusAlumnos # Import CatEstatusAlumnos
 )
 #Comment to force redeploy
 from .schemas import (
@@ -156,6 +158,11 @@ def register_student(student_data: StudentRegister, db: Session = Depends(get_db
     if db.query(DBAlumno).filter(DBAlumno.curp == student_data.curp).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CURP already registered")
 
+    # Get default student status
+    default_status = db.query(DBCatEstatusAlumnos).filter(DBCatEstatusAlumnos.nombre == "Activo").first()
+    if not default_status:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Default student status 'Activo' not found in catalog. Please configure it.")
+
     # Create Alumno record
     new_alumno = DBAlumno(
         nombre=student_data.nombre,
@@ -164,7 +171,9 @@ def register_student(student_data: StudentRegister, db: Session = Depends(get_db
         fecha_nacimiento=student_data.fechaNacimiento,
         curp=student_data.curp,
         email=student_data.email,
-        matricula="PENDING" # Matricula will be generated later by admin
+        matricula="PENDING", # Matricula will be generated later by admin
+        estatus_id=default_status.id, # Set the default status
+        fecha_ingreso=date.today() # Set the current date as fecha_ingreso
     )
     db.add(new_alumno)
     db.flush() # Use flush to get the new_alumno.id before commit
