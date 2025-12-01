@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+from fastapi import FastAPI, Depends, HTTPException, status, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
@@ -7,6 +7,7 @@ from collections import defaultdict
 from sqlalchemy import func
 import traceback
 import logging
+import shutil
 
 ##This is a random comment to force redeploy
 
@@ -34,7 +35,8 @@ from .models import (
     Solicitud as DBSolicitud,
     TitulacionRequisito as DBTitulacionRequisito,
     AlumnoTitulacion as DBAlumnoTitulacion,
-    Pago as DBPago
+    Pago as DBPago,
+    CatTiposDocumento as DBCatTiposDocumento
 )
 #Comment to force redeploy
 from .schemas import (
@@ -410,9 +412,70 @@ def get_documentos_me(current_user: Dict = Depends(get_current_user), db: Sessio
         raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
     alumno_id = current_user["user_id"]
-    documentos = db.query(DBDocumento).filter(DBDocumento.alumno_id == alumno_id).all()
     
-    return [{"clave_doc": "N/A", "nombre": doc.nombre_archivo, "entregado": True, "observaciones": doc.comentarios} for doc in documentos]
+    # Get all document types from the catalog
+    tipos_documento = db.query(DBCatTiposDocumento).filter(DBCatTiposDocumento.activo == True).all()
+    
+    # Get all documents uploaded by the student
+    documentos_alumno = db.query(DBDocumento).filter(DBDocumento.alumno_id == alumno_id).all()
+    
+    # Create a dictionary for quick lookup of uploaded documents
+    mapa_documentos_alumno = {doc.tipo_id: doc for doc in documentos_alumno}
+    
+    # Prepare the response
+    documentos_a_mostrar = []
+    for tipo_doc in tipos_documento:
+        doc_alumno = mapa_documentos_alumno.get(tipo_doc.id)
+        documentos_a_mostrar.append({
+            "id": tipo_doc.id,
+            "nombre": tipo_doc.nombre,
+            "entregado": doc_alumno is not None,
+            "observaciones": doc_alumno.comentarios if doc_alumno else None
+        })
+        
+    return documentos_a_mostrar
+
+@app.post("/documentos/{doc_id}/upload")
+async def upload_document(doc_id: int, file: UploadFile = File(...), current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "student":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    # Check if a document of this type already exists for the student
+    doc = db.query(DBDocumento).filter(DBDocumento.tipo_id == doc_id, DBDocumento.alumno_id == alumno_id).first()
+
+    upload_dir = "uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file.filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    if doc:
+        # Update existing document
+        doc.ruta_archivo = file_path
+        doc.nombre_archivo = file.filename
+        doc.tamano_bytes = file.file.tell()
+        doc.mime_type = file.content_type
+        doc.fecha_subida = func.now()
+        doc.estatus_id = 1 # Assuming 1 is "Uploaded"
+    else:
+        # Create new document
+        doc = DBDocumento(
+            alumno_id=alumno_id,
+            tipo_id=doc_id,
+            nombre_archivo=file.filename,
+            ruta_archivo=file_path,
+            tamano_bytes=file.file.tell(),
+            mime_type=file.content_type,
+            estatus_id=1 # Assuming 1 is "Uploaded"
+        )
+        db.add(doc)
+
+    db.commit()
+
+    return {"message": "Document uploaded successfully"}
 
 @app.get("/inscripciones/me", response_model=List[SchemaInscripcion])
 def get_inscripciones_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):

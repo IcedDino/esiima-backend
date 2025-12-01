@@ -130,7 +130,7 @@ class UserUpdate(BaseModel):
     telefono: Optional[str] = None
 
 class Documento(BaseModel):
-    clave_doc: str
+    id: int
     nombre: str
     entregado: bool
     observaciones: Optional[str] = None
