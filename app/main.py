@@ -321,7 +321,7 @@ def get_documentos_me(current_user: Dict = Depends(get_current_user), db: Sessio
     documentos = db.query(DBDocumento).filter(DBDocumento.alumno_id == alumno_id).all()
     
     # This is a placeholder as there is no direct mapping for clave_doc and entregado
-    # in the Documento model. You might need to adjust this based on your actual model logic.
+    # in the Documento model. You might need to adjust this based on your actual logic.
     return [{"clave_doc": "N/A", "nombre": doc.nombre_archivo, "entregado": True, "observaciones": doc.comentarios} for doc in documentos]
 
 @app.get("/inscripciones/me", response_model=List[SchemaInscripcion])
@@ -331,8 +331,9 @@ def get_inscripciones_me(current_user: Dict = Depends(get_current_user), db: Ses
 
     alumno_id = current_user["user_id"]
     inscripciones = db.query(DBInscripcion).filter(DBInscripcion.alumno_id == alumno_id).options(
+        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales),
         joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
-        joinedload(DBInscripcion.kardex).joinedload(DBKardex.calificaciones_parciales)
+        joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.grupo)
     ).all()
 
     results = []
