@@ -53,7 +53,8 @@ from .schemas import (
     Horario as SchemaHorario,
     MateriaNoAprobada as SchemaMateriaNoAprobada,
     SolicitudCreate as SchemaSolicitudCreate,
-    RequisitoTitulacion as SchemaRequisitoTitulacion
+    RequisitoTitulacion as SchemaRequisitoTitulacion,
+    FaltaDetalle as SchemaFaltaDetalle
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -435,6 +436,7 @@ def get_materias_me(current_user: Dict = Depends(get_current_user), db: Session 
         horas_semana = (materia.horas_teoricas or 0) + (materia.horas_practicas or 0)
 
         entry = SchemaMateriaFaltas(
+            id=materia.id,
             horas_semana=horas_semana,
             nombre=materia.nombre,
             semestre=materia.cuatrimestre,

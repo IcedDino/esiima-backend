@@ -64,6 +64,7 @@ class AlumnoExtracurricular(BaseModel):
         from_attributes = True
 
 class MateriaSchema(BaseModel):
+    id: int
     nombre: str
     faltas_permitidas: Optional[int] = None
 
@@ -203,6 +204,7 @@ class KardexEntry(BaseModel):
         from_attributes = True
 
 class MateriaFaltas(BaseModel):
+    id: int
     horas_semana: int
     nombre: str
     semestre: int
@@ -252,6 +254,12 @@ class RequisitoTitulacion(BaseModel):
     unidades_a_cubrir: int
     tipo_unidad: str
     unidades_cubiertas: int
+
+    class Config:
+        from_attributes = True
+
+class FaltaDetalle(BaseModel):
+    fecha: date
 
     class Config:
         from_attributes = True
