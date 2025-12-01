@@ -275,45 +275,49 @@ def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 
 @app.get("/users/me", response_model=SchemaUser)
 def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    user = db.query(DBUsuario).options(
-        joinedload(DBUsuario.alumno),
-        joinedload(DBUsuario.docente)
-    ).filter(DBUsuario.email == current_user["sub"]).first()
+    try:
+        user = db.query(DBUsuario).options(
+            joinedload(DBUsuario.alumno).joinedload(DBAlumno.plan_estudio).joinedload(DBPlanEstudio.carrera),
+            joinedload(DBUsuario.docente)
+        ).filter(DBUsuario.email == current_user["sub"]).first()
 
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    if user.alumno:
-        return SchemaUser(
-            nombre=user.alumno.nombre,
-            email=user.email,
-            calle=user.alumno.calle,
-            num_ext=user.alumno.num_ext,
-            num_int=user.alumno.num_int,
-            colonia=user.alumno.colonia,
-            codigo_postal=user.alumno.codigo_postal,
-            municipio=user.alumno.municipio,
-            estado=user.alumno.estado,
-            telefono=user.alumno.telefono,
-            ciclo_escolar=user.alumno.ciclo_escolar,
-            nivel_estudios=user.alumno.nivel_estudios,
-            carrera=user.alumno.plan_estudio.carrera.nombre if user.alumno.plan_estudio and user.alumno.plan_estudio.carrera else None,
-            semestre_grupo=user.alumno.semestre_grupo,
-            cursa_actualmente=user.alumno.cursa_actualmente,
-            promedio_semestral=None # This field is not in the Alumno model
-        )
-    elif user.docente:
-        # This part might need adjustment based on the Docente model and what you want to return
-        return SchemaUser(
-            nombre=user.docente.nombre,
-            email=user.email
-            # Populate other fields from the docente model if available and needed
-        )
-    else:
-        # Fallback for users that are neither student nor teacher
-        return SchemaUser(
-            nombre="N/A",
-            email=user.email
+        if user.alumno:
+            return SchemaUser(
+                nombre=user.alumno.nombre,
+                email=user.email,
+                calle=user.alumno.calle,
+                num_ext=user.alumno.num_ext,
+                num_int=user.alumno.num_int,
+                colonia=user.alumno.colonia,
+                codigo_postal=user.alumno.codigo_postal,
+                municipio=user.alumno.municipio,
+                estado=user.alumno.estado,
+                telefono=user.alumno.telefono,
+                ciclo_escolar=user.alumno.ciclo_escolar,
+                nivel_estudios=user.alumno.nivel_estudios,
+                carrera=user.alumno.plan_estudio.carrera.nombre if user.alumno.plan_estudio and user.alumno.plan_estudio.carrera else None,
+                semestre_grupo=user.alumno.semestre_grupo,
+                cursa_actualmente=user.alumno.cursa_actualmente,
+                promedio_semestral=None # This field is not in the Alumno model
+            )
+        elif user.docente:
+            return SchemaUser(
+                nombre=user.docente.nombre,
+                email=user.email
+            )
+        else:
+            return SchemaUser(
+                nombre="N/A",
+                email=user.email
+            )
+    except Exception as e:
+        logging.error(f"Error in /users/me: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}. Check server logs for more details."
         )
 
 @app.put("/users/me", response_model=SchemaUser)
