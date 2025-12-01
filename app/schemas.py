@@ -199,6 +199,7 @@ class KardexEntry(BaseModel):
     periodo: str
     calificacion: Optional[float]
     tipo_examen: Optional[str]
+    id: int # Added materia ID for frontend detail link
 
     class Config:
         from_attributes = True
@@ -263,3 +264,11 @@ class FaltaDetalle(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PartialGrade(BaseModel):
+    parcial: int = Field(..., alias="unidad")
+    calificacion: Optional[float]
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True

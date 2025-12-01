@@ -56,7 +56,8 @@ from .schemas import (
     MateriaNoAprobada as SchemaMateriaNoAprobada,
     SolicitudCreate as SchemaSolicitudCreate,
     RequisitoTitulacion as SchemaRequisitoTitulacion,
-    FaltaDetalle as SchemaFaltaDetalle
+    FaltaDetalle as SchemaFaltaDetalle,
+    PartialGrade as SchemaPartialGrade
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -407,6 +408,7 @@ def get_kardex_me(current_user: Dict = Depends(get_current_user), db: Session = 
             alto_riesgo = oports_agotadas > 1
 
             entry = SchemaKardexEntry(
+                id=materia.id, # Added materia ID
                 clave=materia.clave,
                 materia=materia.nombre,
                 oports_agotadas=oports_agotadas,
@@ -602,3 +604,38 @@ def get_requisitos_me(current_user: Dict = Depends(get_current_user), db: Sessio
         })
 
     return results
+
+@app.get("/calificaciones/parciales/materia/{materia_id}", response_model=List[SchemaPartialGrade])
+def get_partial_grades_for_materia(
+    materia_id: int,
+    current_user: Dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+
+    # Find the inscription for this student and materia
+    inscription = db.query(DBInscripcion).filter(
+        DBInscripcion.alumno_id == alumno_id,
+        DBInscripcion.docente_materia.has(materia_id=materia_id)
+    ).first()
+
+    if not inscription:
+        raise HTTPException(status_code=404, detail="Inscription not found for this student and materia.")
+
+    # Find the kardex entry for this inscription
+    kardex_entry = db.query(DBKardex).filter(
+        DBKardex.inscripcion_id == inscription.id
+    ).first()
+
+    if not kardex_entry:
+        return [] # No partial grades if no kardex entry
+
+    # Get all partial grades for this kardex entry
+    partial_grades = db.query(DBCalificacionParcial).filter(
+        DBCalificacionParcial.kardex_id == kardex_entry.id
+    ).all()
+
+    return partial_grades
