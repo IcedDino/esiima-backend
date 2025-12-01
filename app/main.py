@@ -641,7 +641,7 @@ def get_requisitos_me(current_user: Dict = Depends(get_current_user), db: Sessio
             "nombre": req.requisito,
             "unidades_a_cubrir": req.unidades_requeridas or 0,
             "tipo_unidad": req.tipo_unidad or "N/A",
-            "unidades_cubiertas": alumno_req.unidades_cubiertas if alumno_req else 0
+            "unidades_cubiertas": (alumno_req.unidades_cubiertas or 0) if alumno_req else 0
         })
 
     return results
