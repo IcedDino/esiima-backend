@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime, date
 
 class UserLogin(BaseModel):
@@ -111,6 +111,7 @@ class User(BaseModel):
     carrera: Optional[str] = None
     semestre_grupo: Optional[str] = None
     cursa_actualmente: Optional[str] = None
+    promedio_semestral: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -210,6 +211,47 @@ class MateriaFaltas(BaseModel):
     total_faltas: int
     horas_teoricas: int
     horas_practicas: int
+
+    class Config:
+        from_attributes = True
+
+class Examen(BaseModel):
+    materia: str
+    semestre: int
+    calificacion: Optional[float]
+    maestro: str
+    lugar_fecha_hora: str
+
+    class Config:
+        from_attributes = True
+
+class Horario(BaseModel):
+    hora: str
+    LUNES: Optional[str] = None
+    MARTES: Optional[str] = None
+    MIERCOLES: Optional[str] = None
+    JUEVES: Optional[str] = None
+    VIERNES: Optional[str] = None
+    SABADO: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class MateriaNoAprobada(BaseModel):
+    id: int
+    nombre: str
+
+    class Config:
+        from_attributes = True
+
+class SolicitudCreate(BaseModel):
+    materias: List[int]
+
+class RequisitoTitulacion(BaseModel):
+    nombre: str
+    unidades_a_cubrir: int
+    tipo_unidad: str
+    unidades_cubiertas: int
 
     class Config:
         from_attributes = True

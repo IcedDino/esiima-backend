@@ -25,7 +25,11 @@ from .models import (
     ServicioSocial as DBServicioSocial,
     PracticasProfesionales as DBPracticasProfesionales,
     Asistencia as DBAsistencia,
-    Periodo as DBPeriodo
+    Periodo as DBPeriodo,
+    HorarioDetalle as DBHorarioDetalle,
+    Solicitud as DBSolicitud,
+    TitulacionRequisito as DBTitulacionRequisito,
+    AlumnoTitulacion as DBAlumnoTitulacion
 )
 from .schemas import (
     Carrera as SchemaCarrera, 
@@ -44,7 +48,12 @@ from .schemas import (
     ServicioSocial as SchemaServicioSocial,
     PracticasProfesionales as SchemaPracticasProfesionales,
     KardexEntry as SchemaKardexEntry,
-    MateriaFaltas as SchemaMateriaFaltas
+    MateriaFaltas as SchemaMateriaFaltas,
+    Examen as SchemaExamen,
+    Horario as SchemaHorario,
+    MateriaNoAprobada as SchemaMateriaNoAprobada,
+    SolicitudCreate as SchemaSolicitudCreate,
+    RequisitoTitulacion as SchemaRequisitoTitulacion
 )
 
 # 1. UPDATE THIS IMPORT: Add 'get_current_user'
@@ -245,43 +254,10 @@ def read_carreras(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 
 @app.get("/users/me", response_model=SchemaUser)
 def get_user_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
-    alumno = db.query(DBAlumno).options(
-        joinedload(DBAlumno.plan_estudio).joinedload(DBPlanEstudio.carrera)
-    ).filter(DBAlumno.id == current_user["user_id"]).first()
-
-    if not alumno:
+    user = db.query(DBUsuario).filter(DBUsuario.email == current_user["sub"]).first()
+    if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    # Calculate promedio_semestral
-    current_period = db.query(DBPeriodo).filter(DBPeriodo.activo == True).first()
-    promedio_semestral = None
-    if current_period and alumno.cuatrimestre_actual:
-        grades = db.query(func.avg(DBKardex.calificacion_final)).join(DBInscripcion).join(DBDocenteMateria).filter(
-            DBInscripcion.alumno_id == alumno.id,
-            DBDocenteMateria.periodo_id == current_period.id,
-            DBDocenteMateria.materia.has(cuatrimestre=alumno.cuatrimestre_actual)
-        ).scalar()
-        promedio_semestral = grades if grades is not None else 0.0
-
-    user_data = {
-        "nombre": alumno.nombre,
-        "email": alumno.email,
-        "calle": alumno.calle,
-        "num_ext": alumno.num_ext,
-        "num_int": alumno.num_int,
-        "colonia": alumno.colonia,
-        "codigo_postal": alumno.codigo_postal,
-        "municipio": alumno.municipio,
-        "estado": alumno.estado,
-        "telefono": alumno.telefono,
-        "ciclo_escolar": alumno.ciclo_escolar,
-        "nivel_estudios": alumno.nivel_estudios,
-        "carrera": alumno.plan_estudio.carrera.nombre if alumno.plan_estudio and alumno.plan_estudio.carrera else None,
-        "semestre_grupo": alumno.semestre_grupo,
-        "cursa_actualmente": alumno.cursa_actualmente,
-        "promedio_semestral": promedio_semestral
-    }
-    return SchemaUser(**user_data)
+    return user
 
 @app.put("/users/me", response_model=SchemaUser)
 def update_user_me(user_update: SchemaUserUpdate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -473,3 +449,91 @@ def get_materias_me(current_user: Dict = Depends(get_current_user), db: Session 
         materias_data.append(entry)
 
     return materias_data
+
+@app.get("/examenes/me", response_model=List[SchemaExamen])
+def get_examenes_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    # This is a placeholder implementation. You will need to adjust it to your actual logic for exams.
+    # This example assumes exams are stored in the Kardex table with a type_examen.
+    kardex_entries = db.query(DBKardex).join(DBInscripcion).filter(
+        DBInscripcion.alumno_id == alumno_id,
+        DBKardex.tipo_examen != None
+    ).options(
+        joinedload(DBKardex.inscripcion).joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.materia),
+        joinedload(DBKardex.inscripcion).joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.docente)
+    ).all()
+
+    examenes = []
+    for entry in kardex_entries:
+        materia = entry.inscripcion.docente_materia.materia
+        docente = entry.inscripcion.docente_materia.docente
+        examenes.append({
+            "materia": materia.nombre,
+            "semestre": materia.cuatrimestre,
+            "calificacion": entry.calificacion_final,
+            "maestro": docente.nombre,
+            "lugar_fecha_hora": "Not specified" # Placeholder
+        })
+
+    return examenes
+
+@app.get("/horario/me", response_model=Dict[str, Dict[str, str]])
+def get_horario_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    horarios = db.query(DBHorarioDetalle).join(DBDocenteMateria).join(DBInscripcion).filter(
+        DBInscripcion.alumno_id == alumno_id
+    ).options(
+        joinedload(DBHorarioDetalle.docente_materia).joinedload(DBDocenteMateria.materia)
+    ).all()
+
+    horario_data = defaultdict(dict)
+    dias_semana = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"]
+
+    for detalle in horarios:
+        hora_inicio = detalle.horario_inicio.strftime("%H:%M")
+        hora_fin = detalle.horario_fin.strftime("%H:%M")
+        dia = dias_semana[detalle.dia_semana - 1]
+        materia = detalle.docente_materia.materia.nombre
+        
+        horario_data[f"{hora_inicio} - {hora_fin}"][dia] = materia
+
+    return horario_data
+
+@app.get("/materias/no-aprobadas", response_model=List[SchemaMateriaNoAprobada])
+def get_materias_no_aprobadas(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    materias = db.query(DBMateria).join(DBDocenteMateria).join(DBInscripcion).join(DBKardex).filter(
+        DBInscripcion.alumno_id == alumno_id,
+        DBKardex.aprobado == False
+    ).all()
+
+    return materias
+
+@app.post("/solicitudes", status_code=status.HTTP_201_CREATED)
+def create_solicitud(solicitud: SchemaSolicitudCreate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user["role"].lower() != "alumno":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    
+    for materia_id in solicitud.materias:
+        db_solicitud = DBSolicitud(
+            alumno_id=alumno_id,
+            materia_id=materia_id
+        )
+        db.add(db_solicitud)
+    
+    db.commit()
+    return {"message": "Solicitud enviada exitosamente."}
