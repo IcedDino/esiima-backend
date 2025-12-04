@@ -1148,3 +1148,10 @@ def save_group_attendance(group_id: int, payload: AttendanceSaveRequest, current
             ))
 
     db.commit()
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logging.error(f"Unhandled error: {exc}\n{traceback.format_exc()}")
+    return JSONResponse(status_code=500, content={
+        "detail": "Internal server error",
+        "error": str(exc)
+    })
