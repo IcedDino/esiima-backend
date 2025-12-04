@@ -737,6 +737,7 @@ def get_examenes_me(current_user: Dict = Depends(get_current_user), db: Session 
     ).all()
 
     examenes = []
+    seen_materia_ids = set()
     for entry in kardex_entries:
         materia = entry.inscripcion.docente_materia.materia
         docente = entry.inscripcion.docente_materia.docente
@@ -747,6 +748,33 @@ def get_examenes_me(current_user: Dict = Depends(get_current_user), db: Session 
             "maestro": docente.nombre,
             "lugar_fecha_hora": "Not specified"
         })
+        if materia and materia.id:
+            seen_materia_ids.add(materia.id)
+
+    # Include solicitudes pendientes como próximos extraordinarios
+    solicitudes = db.query(DBSolicitud).filter(DBSolicitud.alumno_id == alumno_id).options(
+        joinedload(DBSolicitud.materia)
+    ).all()
+    for sol in solicitudes:
+        if not sol.materia:
+            continue
+        mid = sol.materia.id
+        if mid in seen_materia_ids:
+            continue
+        # Try to find current docente for this materia from an inscripcion
+        insc = db.query(DBInscripcion).filter(
+            DBInscripcion.alumno_id == alumno_id,
+            DBInscripcion.docente_materia.has(materia_id=mid)
+        ).options(joinedload(DBInscripcion.docente_materia).joinedload(DBDocenteMateria.docente)).first()
+        docente_nombre = insc.docente_materia.docente.nombre if insc and insc.docente_materia and insc.docente_materia.docente else "Pendiente"
+        examenes.append({
+            "materia": sol.materia.nombre,
+            "semestre": sol.materia.cuatrimestre,
+            "calificacion": None,
+            "maestro": docente_nombre,
+            "lugar_fecha_hora": "Pendiente"
+        })
+        seen_materia_ids.add(mid)
 
     return examenes
 
@@ -795,7 +823,13 @@ def get_materias_no_aprobadas(current_user: Dict = Depends(get_current_user), db
         DBKardex.aprobado == False
     ).all()
 
-    return materias
+    # Excluir materias ya solicitadas
+    solicitudes_materia_ids = set(
+        m_id for (m_id,) in db.query(DBSolicitud.materia_id).filter(DBSolicitud.alumno_id == alumno_id).all()
+    )
+    materias_filtradas = [m for m in materias if m.id not in solicitudes_materia_ids]
+
+    return materias_filtradas
 
 @app.post("/solicitudes", status_code=status.HTTP_201_CREATED)
 def create_solicitud(solicitud: SchemaSolicitudCreate, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
