@@ -37,6 +37,8 @@ from .models import (
     TitulacionRequisito as DBTitulacionRequisito,
     AlumnoTitulacion as DBAlumnoTitulacion,
     Pago as DBPago,
+    CatConceptosPago as DBCatConceptosPago,
+    CatEstatusPago as DBCatEstatusPago,
     CatTiposDocumento as DBCatTiposDocumento,
     CatRoles as DBCatRoles,
     CatEstatusAlumnos as DBCatEstatusAlumnos # Import CatEstatusAlumnos
@@ -161,6 +163,40 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         "role": role,
         "full_name": full_name
     })
+
+    if role == "student" and requires_documents and user.alumno:
+        concepto = db.query(DBCatConceptosPago).filter(DBCatConceptosPago.nombre == "Inscripción Documentos").first()
+        if not concepto:
+            concepto = DBCatConceptosPago(nombre="Inscripción Documentos", descripcion="Cargo por documentos de inscripción", monto_default=1000, activo=True)
+            db.add(concepto)
+            db.flush()
+        estatus = db.query(DBCatEstatusPago).filter(DBCatEstatusPago.nombre == "Pendiente").first()
+        if not estatus:
+            estatus = DBCatEstatusPago(nombre="Pendiente", descripcion="Pago pendiente")
+            db.add(estatus)
+            db.flush()
+        periodo = db.query(DBPeriodo).order_by(DBPeriodo.fecha_inicio.desc()).first()
+        existing_pago = db.query(DBPago).filter(
+            DBPago.alumno_id == user.alumno.id,
+            DBPago.concepto_id == concepto.id,
+            DBPago.estatus_id == estatus.id,
+            DBPago.monto_total == 1000,
+            DBPago.fecha_pago == None
+        ).first()
+        if not existing_pago:
+            pago = DBPago(
+                alumno_id=user.alumno.id,
+                periodo_id=periodo.id if periodo else None,
+                concepto_id=concepto.id,
+                monto=1000,
+                descuento_beca=0,
+                otros_descuentos=0,
+                monto_total=1000,
+                monto_pagado=0,
+                estatus_id=estatus.id
+            )
+            db.add(pago)
+            db.commit()
 
     return {
         "access_token": token,
@@ -978,8 +1014,8 @@ def get_pagos_me(current_user: Dict = Depends(get_current_user), db: Session = D
 
     return [
         {
-            "estado": pago.estatus.nombre,
-            "ciclo": pago.periodo.nombre,
+            "estado": pago.estatus.nombre if pago.estatus else "",
+            "ciclo": pago.periodo.nombre if pago.periodo else "",
             "cargo": pago.monto_total,
             "abono": pago.monto_pagado,
             "saldo": pago.monto_total - pago.monto_pagado
