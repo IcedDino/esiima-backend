@@ -93,7 +93,7 @@ allowed_origins = [o.strip() for o in ALLOWED_ORIGINS.split(",")] if ALLOWED_ORI
     "http://localhost:5173",
     "http://localhost:3000",
 ]
-allow_origin_regex = os.getenv("ALLOW_ORIGIN_REGEX")
+allow_origin_regex = os.getenv("ALLOW_ORIGIN_REGEX") or r"https://.*azurewebsites\.net"
 
 app.add_middleware(
     CORSMiddleware,
@@ -168,7 +168,9 @@ def register_student(student_data: StudentRegister, db: Session = Depends(get_db
     # Get default student status
     default_status = db.query(DBCatEstatusAlumnos).filter(DBCatEstatusAlumnos.nombre == "Activo").first()
     if not default_status:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Default student status 'Activo' not found in catalog. Please configure it.")
+        default_status = DBCatEstatusAlumnos(nombre="Activo", descripcion="Alumno activo", es_baja=False, orden=1)
+        db.add(default_status)
+        db.flush()
 
     # Create Alumno record
     new_alumno = DBAlumno(
