@@ -142,6 +142,19 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         role = "student"
         full_name = f"{user.alumno.nombre} {user.alumno.apellido_paterno} {user.alumno.apellido_materno or ''}".strip()
 
+    requires_documents = False
+    missing_documents = []
+    if role == "student" and user.alumno:
+        required_types = db.query(DBCatTiposDocumento).filter(DBCatTiposDocumento.activo == True, DBCatTiposDocumento.obligatorio == True).all()
+        required_type_ids = {t.id for t in required_types}
+        existing_docs = db.query(DBDocumento.tipo_id).filter(DBDocumento.alumno_id == user.alumno.id, DBDocumento.tipo_id.in_(required_type_ids)).all()
+        existing_type_ids = {tid for (tid,) in existing_docs}
+        missing_ids = required_type_ids - existing_type_ids
+        if missing_ids:
+            requires_documents = True
+            name_map = {t.id: t.nombre for t in required_types}
+            missing_documents = [name_map[i] for i in missing_ids if i in name_map]
+
     token = create_access_token({
         "sub": user.email,
         "user_id": user_id,
@@ -154,7 +167,9 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "role": role,
         "full_name": full_name,
-        "message": "login ok"
+        "message": "login ok",
+        "requires_documents": requires_documents,
+        "missing_documents": missing_documents
     }
 
 @app.post("/enroll/register", status_code=status.HTTP_201_CREATED)
