@@ -1155,3 +1155,9 @@ async def global_exception_handler(request: Request, exc: Exception):
         "detail": "Internal server error",
         "error": str(exc)
     })
+@app.get("/debug/cors")
+def debug_cors():
+    return {
+        "allowed_origins": allowed_origins,
+        "allow_origin_regex": allow_origin_regex
+    }
