@@ -80,6 +80,8 @@ from .schemas import (
 from .auth import verify_password, create_access_token, get_current_user, get_password_hash
 from jose import JWTError, jwt
 import os
+import uuid
+from sqlalchemy.exc import IntegrityError
 
 # JWT settings
 SECRET_KEY = os.getenv("SECRET_KEY", "a_default_secret_key_if_not_set")
@@ -173,6 +175,7 @@ def register_student(student_data: StudentRegister, db: Session = Depends(get_db
         db.flush()
 
     # Create Alumno record
+    temp_matricula = f"TEMP-{uuid.uuid4().hex[:12]}"
     new_alumno = DBAlumno(
         nombre=student_data.nombre,
         apellido_paterno=student_data.apellidoPaterno,
@@ -180,12 +183,16 @@ def register_student(student_data: StudentRegister, db: Session = Depends(get_db
         fecha_nacimiento=student_data.fechaNacimiento,
         curp=student_data.curp,
         email=student_data.email,
-        matricula="PENDING", # Matricula will be generated later by admin
+        matricula=temp_matricula,
         estatus_id=default_status.id, # Set the default status
         fecha_ingreso=date.today() # Set the current date as fecha_ingreso
     )
     db.add(new_alumno)
-    db.flush() # Use flush to get the new_alumno.id before commit
+    try:
+        db.flush() # Use flush to get the new_alumno.id before commit
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error creando alumno: {str(e.orig) if hasattr(e, 'orig') else str(e)}")
 
     # Get student role
     student_role = db.query(DBCatRoles).filter(DBCatRoles.nombre == "alumno").first()
@@ -202,7 +209,11 @@ def register_student(student_data: StudentRegister, db: Session = Depends(get_db
         debe_cambiar_password=True # Force password change on first login
     )
     db.add(new_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Error creando usuario: {str(e.orig) if hasattr(e, 'orig') else str(e)}")
     db.refresh(new_alumno)
     db.refresh(new_user)
 
