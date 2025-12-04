@@ -8,7 +8,7 @@ from sqlalchemy import func
 import traceback
 import logging
 import shutil
-from datetime import date as date_module # Import date
+from datetime import date as date_module, date  # Import date
 
 ##This is a random comment to force redeploy
 
@@ -943,7 +943,13 @@ def get_group_students(group_id: int, current_user: Dict = Depends(get_current_u
         joinedload(DBInscripcion.alumno)
     ).all()
 
-    return [inscripcion.alumno for inscripcion in inscripciones]
+    unique_alumnos: Dict[int, DBAlumno] = {}
+    for inscripcion in inscripciones:
+        alumno = inscripcion.alumno
+        if alumno and alumno.id not in unique_alumnos:
+            unique_alumnos[alumno.id] = alumno
+
+    return list(unique_alumnos.values())
 
 @app.get("/groups/{group_id}/grades", response_model=List[StudentGrade])
 def get_group_grades(group_id: int, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
