@@ -8,7 +8,7 @@ from sqlalchemy import func
 import traceback
 import logging
 import shutil
-from datetime import date # Import date
+from datetime import date as date_module # Import date
 
 ##This is a random comment to force redeploy
 
@@ -71,6 +71,8 @@ from .schemas import (
     TeacherGroup,
     StudentGrade,
     StudentGradeUpdate,
+    AttendanceSaveRequest,
+    AttendanceEntry,
     StudentRegister
 )
 
@@ -1001,5 +1003,83 @@ def update_group_grades(group_id: int, grades: List[StudentGradeUpdate], current
                 calificacion_parcial.calificacion = calificacion
             else:
                 db.add(DBCalificacionParcial(kardex_id=kardex.id, unidad=parcial, calificacion=calificacion))
+
+    db.commit()
+
+@app.get("/groups/{group_id}/attendance", response_model=List[AttendanceEntry])
+def get_group_attendance(group_id: int, date: str, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "teacher":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a teacher")
+
+    docente_id = current_user["user_id"]
+    dm = db.query(DBDocenteMateria).filter(
+        DBDocenteMateria.docente_id == docente_id,
+        DBDocenteMateria.grupo_id == group_id,
+        DBDocenteMateria.activo == True
+    ).first()
+    if not dm:
+        raise HTTPException(status_code=403, detail="Access denied: Group not assigned to teacher")
+
+    try:
+        query_date = date_module.fromisoformat(date)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    inscripciones = db.query(DBInscripcion).filter(
+        DBInscripcion.docente_materia_id == dm.id
+    ).options(joinedload(DBInscripcion.alumno)).all()
+
+    entries: List[AttendanceEntry] = []
+    for inscripcion in inscripciones:
+        asistencia = db.query(DBAsistencia).filter(
+            DBAsistencia.inscripcion_id == inscripcion.id,
+            DBAsistencia.fecha == query_date
+        ).first()
+        if asistencia:
+            entries.append(AttendanceEntry(student_id=inscripcion.alumno_id, status="presente" if asistencia.presente else "ausente"))
+
+    return entries
+
+@app.post("/groups/{group_id}/attendance", status_code=status.HTTP_204_NO_CONTENT)
+def save_group_attendance(group_id: int, payload: AttendanceSaveRequest, current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "teacher":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a teacher")
+
+    docente_id = current_user["user_id"]
+    dm = db.query(DBDocenteMateria).filter(
+        DBDocenteMateria.docente_id == docente_id,
+        DBDocenteMateria.grupo_id == group_id,
+        DBDocenteMateria.activo == True
+    ).first()
+    if not dm:
+        raise HTTPException(status_code=403, detail="Access denied: Group not assigned to teacher")
+
+    horario = db.query(DBHorarioDetalle).filter(DBHorarioDetalle.docente_materia_id == dm.id).first()
+    horario_id = horario.id if horario else None
+
+    for entry in payload.attendance:
+        inscripcion = db.query(DBInscripcion).filter(
+            DBInscripcion.alumno_id == entry.student_id,
+            DBInscripcion.docente_materia_id == dm.id
+        ).first()
+        if not inscripcion:
+            continue
+
+        asistencia = db.query(DBAsistencia).filter(
+            DBAsistencia.inscripcion_id == inscripcion.id,
+            DBAsistencia.fecha == payload.date
+        ).first()
+
+        if asistencia:
+            asistencia.presente = (entry.status == "presente")
+        else:
+            db.add(DBAsistencia(
+                inscripcion_id=inscripcion.id,
+                horario_detalle_id=horario_id,
+                fecha=payload.date,
+                presente=(entry.status == "presente"),
+                retardo=False,
+                justificada=False
+            ))
 
     db.commit()

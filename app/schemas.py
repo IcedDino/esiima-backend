@@ -317,3 +317,12 @@ class StudentGradeUpdate(BaseModel):
     parcial1: Optional[float] = None
     parcial2: Optional[float] = None
     parcial3: Optional[float] = None
+
+# ===== ATTENDANCE =====
+class AttendanceEntry(BaseModel):
+    student_id: int
+    status: str
+
+class AttendanceSaveRequest(BaseModel):
+    date: date
+    attendance: List[AttendanceEntry]
