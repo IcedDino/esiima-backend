@@ -470,7 +470,15 @@ def create_evaluacion(evaluacion: SchemaEvaluacionCreate, current_user: Dict = D
         raise HTTPException(status_code=403, detail="Access denied: User is not a student")
 
     alumno_id = current_user["user_id"]
-    
+    # Enforce one evaluation per alumno-profesor-materia
+    existing = db.query(DBEvaluacion).filter(
+        DBEvaluacion.profesor_id == evaluacion.profesor_id,
+        DBEvaluacion.alumno_id == alumno_id,
+        DBEvaluacion.materia_id == evaluacion.materia_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Ya has evaluado a este profesor para esta materia.")
+
     db_evaluacion = DBEvaluacion(
         profesor_id=evaluacion.profesor_id,
         alumno_id=alumno_id,
@@ -480,6 +488,21 @@ def create_evaluacion(evaluacion: SchemaEvaluacionCreate, current_user: Dict = D
     db.add(db_evaluacion)
     db.commit()
     return {"message": "Evaluación enviada exitosamente."}
+
+@app.get("/evaluaciones/me")
+def get_evaluaciones_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.get("role") != "student":
+        raise HTTPException(status_code=403, detail="Access denied: User is not a student")
+
+    alumno_id = current_user["user_id"]
+    evaluaciones = db.query(DBEvaluacion).filter(DBEvaluacion.alumno_id == alumno_id).all()
+    return [
+        {
+            "profesor_id": ev.profesor_id,
+            "materia_id": ev.materia_id,
+            "calificacion": ev.calificacion
+        } for ev in evaluaciones
+    ]
 
 @app.get("/documentos/me", response_model=List[SchemaDocumento])
 def get_documentos_me(current_user: Dict = Depends(get_current_user), db: Session = Depends(get_db)):
