@@ -1040,7 +1040,7 @@ def get_group_attendance(group_id: int, date: str, current_user: Dict = Depends(
         asistencia = db.query(DBAsistencia).filter(
             DBAsistencia.inscripcion_id == inscripcion.id,
             DBAsistencia.fecha == query_date
-        ).first()
+        ).order_by(DBAsistencia.created_at.desc()).first()
         if asistencia:
             entries.append(AttendanceEntry(student_id=inscripcion.alumno_id, status="presente" if asistencia.presente else "ausente"))
 
@@ -1074,7 +1074,7 @@ def save_group_attendance(group_id: int, payload: AttendanceSaveRequest, current
         asistencia = db.query(DBAsistencia).filter(
             DBAsistencia.inscripcion_id == inscripcion.id,
             DBAsistencia.fecha == payload.date
-        ).first()
+        ).order_by(DBAsistencia.created_at.desc()).first()
 
         if asistencia:
             asistencia.presente = (entry.status == "presente")
